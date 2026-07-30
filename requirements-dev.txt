@@ -1,0 +1,4 @@
+PyInstaller
+Pillow
+-r requirements.txt
+
