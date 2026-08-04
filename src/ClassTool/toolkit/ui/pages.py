@@ -62,7 +62,7 @@ def create_about_page(main_window):
     layout = QVBoxLayout(page)
     layout.setContentsMargins(40, 40, 40, 40)
 
-    title = QLabel("关于 ClassToolkit")
+    title = QLabel("关于 ClassTool")
     title.setStyleSheet("font-size: 28pt; font-weight: 300; margin-bottom: 20px;")
     layout.addWidget(title)
 
@@ -77,8 +77,8 @@ def create_about_page(main_window):
     links = QLabel(
         'B站主页：<a href="https://space.bilibili.com/3706969464506745">'
         'https://space.bilibili.com/3706969464506745</a><br>'
-        'GitHub 主页：<a href="https://github.com/Yu-Mario">'
-        'https://github.com/Yu-Mario</a>'
+        'GitHub 主页：<a href="https://github.com/Mario-Benny">'
+        'https://github.com/Mario-Benny</a>'
     )
     links.setOpenExternalLinks(True)
     links.setStyleSheet("font-size: 11pt; color: #d0eaff;")

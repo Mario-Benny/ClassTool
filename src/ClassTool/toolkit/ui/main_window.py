@@ -7,7 +7,7 @@
 import os
 from typing import Dict
 
-from PySide6.QtCore import QFileSystemWatcher, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QFileSystemWatcher, QTimer, QPropertyAnimation, QEasingCurve, Qt
 from PySide6.QtGui import QPixmap, QColor, QIcon, QAction
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         self.theme_manager = ThemeManager("dark")
 
         self.setWindowTitle("ClassTool")
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.resize(1000, 700)
 
         self.sidebar_is_collapsed = False

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-ClassToolkit 主入口
+ClassTool 主入口
 """
 
 import sys

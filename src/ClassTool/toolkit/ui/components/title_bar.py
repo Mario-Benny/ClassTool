@@ -25,7 +25,7 @@ class TitleBar(QWidget):
         self.icon_label.setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 10pt; color: white; margin-right: 10px;")
         layout.addWidget(self.icon_label)
 
-        self.title_label = QLabel("ClassToolkit")
+        self.title_label = QLabel("ClassTool")
         self.title_label.setStyleSheet("font-size: 9pt; color: #ccc;")
         layout.addWidget(self.title_label)
 
