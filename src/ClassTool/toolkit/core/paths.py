@@ -16,6 +16,18 @@ def app_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def resource_root() -> Path:
+    """返回内置资源根目录，兼容源码运行和单文件 EXE。"""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return app_root()
+
+
+def language_dir() -> Path:
+    """返回内置语言资源目录。"""
+    return resource_root() / "language"
+
+
 def ensure_tools_dir() -> Path:
     """返回 tools 目录，不存在时自动创建。"""
     tools_dir = app_root() / "tools"
@@ -33,6 +45,11 @@ def ensure_data_dir() -> Path:
 def tools_config_path() -> Path:
     """返回用户模块数据配置文件路径。"""
     return ensure_data_dir() / "tools_data.json"
+
+
+def settings_path() -> Path:
+    """返回主程序设置文件路径。"""
+    return ensure_data_dir() / "settings.json"
 
 
 def legacy_tools_config_path() -> Path:

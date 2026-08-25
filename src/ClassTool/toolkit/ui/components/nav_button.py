@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
-导航按钮（侧边栏内），支持折叠时只显示图标
-"""
+"""侧边栏中的文本导航按钮。"""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton, QHBoxLayout, QLabel, QSizePolicy
@@ -12,54 +10,45 @@ class NavButton(QPushButton):
     def __init__(self, text: str, icon_char: str | None = None, parent=None):
         super().__init__(parent)
         self.setCheckable(True)
-        self.setFixedHeight(48)
+        self.setFixedHeight(44)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        self.icon_char = icon_char
         self.full_text = text
-        self.is_collapsed = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.icon_label = QLabel(self.icon_char or "")
-        self.icon_label.setFixedWidth(60)
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("""
-            font-family: 'Segoe MDL2 Assets';
-            font-size: 12pt;
-            background: transparent;
-            border: none;
-        """)
-        layout.addWidget(self.icon_label)
-
         self.text_label = QLabel(self.full_text)
-        self.text_label.setStyleSheet("font-size: 11pt; background: transparent; border: none;")
+        self.text_label.setStyleSheet("font-size: 11pt; background: transparent; border: none; padding-left: 12px;")
         layout.addWidget(self.text_label)
 
         layout.addStretch()
 
-        self.update_style()
+    def set_text(self, text: str):
+        """更新导航文字。"""
+        self.full_text = text
+        self.text_label.setText(text)
 
-    def set_collapsed(self, collapsed: bool):
-        self.is_collapsed = collapsed
-        self.text_label.setVisible(not collapsed)
-
-    def update_style(self):
-        # 增加圆角，更现代
-        self.setStyleSheet("""
-            QPushButton {
+    def apply_theme(self, theme: str, colors: dict[str, str]):
+        hover_bg = "rgba(255, 255, 255, 0.10)" if theme == "dark" else "#edf4fb"
+        active_bg = "rgba(0, 120, 215, 0.24)" if theme == "dark" else "#dceeff"
+        self.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
                 border: none;
                 outline: none;
                 border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-            }
-            QPushButton:checked {
-                background-color: rgba(255, 255, 255, 0.15);
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+            }}
+            QPushButton:checked {{
+                background-color: {active_bg};
                 border-left: 4px solid #0078d7;
-            }
+            }}
         """)
+        self.text_label.setStyleSheet(
+            f"font-size: 11pt; color: {colors['text_primary']}; "
+            "background: transparent; border: none; padding-left: 12px;"
+        )

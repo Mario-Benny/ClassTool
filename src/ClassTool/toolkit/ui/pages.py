@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
-所有页面（欢迎页、关于页）的工厂方法
-"""
+"""首页、设置页和关于页的创建与翻译刷新。"""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -10,9 +8,11 @@ from PySide6.QtWidgets import (
     QScrollArea, QGridLayout, QFrame, QComboBox
 )
 
+from .components.segmented_control import SegmentedControl
 
-def create_welcome_page(main_window):
-    """工具列表页（实际是欢迎页）"""
+
+def create_home_page(main_window):
+    """创建首页工具列表。"""
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -21,7 +21,7 @@ def create_welcome_page(main_window):
     container_layout = QVBoxLayout(container)
     container_layout.setContentsMargins(40, 40, 40, 40)
 
-    title = QLabel("欢迎使用 ClassTool 课堂工具集")
+    title = QLabel()
     title.setStyleSheet("font-size: 28pt; font-weight: 300; margin-bottom: 20px;")
     container_layout.addWidget(title)
 
@@ -52,56 +52,191 @@ def create_welcome_page(main_window):
     main_window.scroll_area = scroll_area
     main_window.tiles_container = tiles_container
     main_window.tiles_layout = tiles_layout
+    main_window.home_title = title
+    retranslate_home_page(main_window)
 
     return page
 
 
 def create_about_page(main_window):
-    """关于页面，包含主题切换"""
+    """创建关于页面。"""
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(40, 40, 40, 40)
 
-    title = QLabel("关于 ClassTool")
+    title = QLabel()
     title.setStyleSheet("font-size: 28pt; font-weight: 300; margin-bottom: 20px;")
     layout.addWidget(title)
 
-    info = QLabel(
-        "版本: 1.0.2\n"
-        "开发者: Mario_YU\n"
-        "基于 PySide6 构建"
-    )
+    info = QLabel()
     info.setStyleSheet("font-size: 12pt; line-height: 1.5;")
     layout.addWidget(info)
 
-    links = QLabel(
-        'B站主页：<a href="https://space.bilibili.com/3706969464506745">'
-        'https://space.bilibili.com/3706969464506745</a><br>'
-        'GitHub 主页：<a href="https://github.com/Mario-Benny">'
-        'https://github.com/Mario-Benny</a>'
-    )
+    links = QLabel()
     links.setOpenExternalLinks(True)
     links.setStyleSheet("font-size: 11pt; color: #d0eaff;")
     layout.addWidget(links)
 
-    # 主题切换下拉框
-    theme_row = QHBoxLayout()
-    theme_label = QLabel("主题")
-    theme_label.setStyleSheet("font-size: 11pt;")
-    theme_combo = QComboBox()
-    theme_combo.addItems(["深色", "浅色"])
-    theme_combo.setCurrentIndex(0 if main_window.theme_manager.current == "dark" else 1)
-    theme_combo.setStyleSheet("font-size: 11pt; padding: 4px;")
-    theme_row.addWidget(theme_label)
-    theme_row.addWidget(theme_combo)
-    theme_row.addStretch()
-    layout.addLayout(theme_row)
-
-    def on_theme_change(idx: int):
-        theme = "dark" if idx == 0 else "light"
-        main_window.apply_theme(theme)
-
-    theme_combo.currentIndexChanged.connect(on_theme_change)
+    page.title_label = title
+    page.info_label = info
+    page.links_label = links
+    main_window.about_page = page
+    retranslate_about_page(main_window)
 
     layout.addStretch()
     return page
+
+
+def create_settings_page(main_window):
+    """创建只包含主题和语言的设置页。"""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(40, 40, 40, 40)
+    layout.setSpacing(22)
+
+    title = QLabel()
+    title.setStyleSheet("font-size: 28pt; font-weight: 300; margin-bottom: 12px;")
+    layout.addWidget(title)
+
+    theme_label = QLabel()
+    theme_label.setStyleSheet("font-size: 11pt;")
+    theme_control = SegmentedControl()
+    theme_control.value_changed.connect(main_window.apply_theme)
+    theme_row = QHBoxLayout()
+    theme_row.setSpacing(24)
+    theme_row.addWidget(theme_label)
+    theme_row.addWidget(theme_control)
+    theme_row.addStretch()
+    layout.addLayout(theme_row)
+
+    language_label = QLabel()
+    language_label.setStyleSheet("font-size: 11pt;")
+    language_combo = QComboBox()
+    language_combo.setFixedWidth(240)
+    language_combo.setMaxVisibleItems(8)
+    language_combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+    )
+    language_row = QHBoxLayout()
+    language_row.setSpacing(24)
+    language_row.addWidget(language_label)
+    language_row.addWidget(language_combo)
+    language_row.addStretch()
+    layout.addLayout(language_row)
+
+    def on_language_change(index: int):
+        language_code = language_combo.itemData(index)
+        if language_code:
+            main_window.set_language(language_code)
+
+    language_combo.currentIndexChanged.connect(on_language_change)
+
+    layout.addStretch()
+    page.title_label = title
+    page.theme_label = theme_label
+    page.theme_control = theme_control
+    page.language_label = language_label
+    page.language_combo = language_combo
+    main_window.settings_page = page
+    retranslate_settings_page(main_window)
+    return page
+
+
+def retranslate_home_page(main_window):
+    """刷新首页中属于主程序的文本。"""
+    if hasattr(main_window, "home_title"):
+        main_window.home_title.setText(main_window.t("home.title"))
+
+
+def retranslate_about_page(main_window):
+    """刷新关于页中属于主程序的文本。"""
+    if not hasattr(main_window, "about_page"):
+        return
+
+    page = main_window.about_page
+    translate = main_window.t
+    page.title_label.setText(translate("about.title"))
+    page.info_label.setText(
+        "\n".join(
+            (
+                translate("about.version"),
+                translate("about.developer"),
+                translate("about.framework"),
+            )
+        )
+    )
+    page.links_label.setText(
+        f'{translate("about.bilibili")} '
+        '<a href="https://space.bilibili.com/3706969464506745">'
+        'https://space.bilibili.com/3706969464506745</a><br>'
+        f'{translate("about.github")} '
+        '<a href="https://github.com/Mario-Benny">'
+        'https://github.com/Mario-Benny</a>'
+    )
+
+
+
+def retranslate_settings_page(main_window):
+    """刷新设置页中的主题和语言选项。"""
+    if not hasattr(main_window, "settings_page"):
+        return
+
+    page = main_window.settings_page
+    translate = main_window.t
+    page.title_label.setText(translate("settings.title"))
+    page.theme_label.setText(translate("settings.theme"))
+    page.theme_control.set_options(
+        [
+            ("dark", translate("theme.dark")),
+            ("light", translate("theme.light")),
+        ],
+        main_window.theme_manager.current,
+    )
+    page.language_label.setText(translate("settings.language"))
+    page.language_combo.blockSignals(True)
+    page.language_combo.clear()
+    for language_code, language_name in main_window.language_manager.available_languages():
+        page.language_combo.addItem(language_name, language_code)
+    page.language_combo.setCurrentIndex(
+        page.language_combo.findData(main_window.language_manager.current_language)
+    )
+    page.language_combo.blockSignals(False)
+
+
+def apply_page_theme(main_window):
+    """让设置控件随主程序主题切换。"""
+    if not hasattr(main_window, "settings_page"):
+        return
+
+    colors = main_window.theme_manager.get_colors()
+    main_window.settings_page.theme_control.apply_theme(colors)
+    selected_background = "#0078d7" if main_window.theme_manager.current == "dark" else "#0067b8"
+    main_window.settings_page.language_combo.setStyleSheet(f"""
+        QComboBox {{
+            background: {colors['bg_sidebar']};
+            color: {colors['text_primary']};
+            border: 1px solid {colors['border_main']};
+            border-radius: 4px;
+            padding: 0 10px;
+            font-size: 10pt;
+            min-height: 32px;
+        }}
+        QComboBox:hover {{ border-color: {selected_background}; }}
+        QComboBox::drop-down {{ border: none; width: 30px; }}
+        QComboBox::down-arrow {{
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 6px solid {colors['text_secondary']};
+            margin-right: 10px;
+        }}
+        QComboBox QAbstractItemView {{
+            background: {colors['bg_sidebar']};
+            color: {colors['text_primary']};
+            border: 1px solid {colors['border_main']};
+            selection-background-color: {selected_background};
+            selection-color: white;
+            outline: 0;
+        }}
+    """)

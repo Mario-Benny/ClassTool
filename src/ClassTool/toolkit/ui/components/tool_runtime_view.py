@@ -10,15 +10,17 @@ from toolkit.ui.utils import clear_layout
 
 
 class ToolRuntimeView(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, translate, parent=None):
         super().__init__(parent)
+        self._translate = translate
+        self._tool_title = None
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(20, 20, 20, 20)
-        root_layout.setSpacing(12)
+        root_layout.setContentsMargins(20, 16, 20, 0)
+        root_layout.setSpacing(10)
 
         header = QHBoxLayout()
-        self.back_btn = QPushButton("\uE72B 返回工具列表")
+        self.back_btn = QPushButton()
         self.back_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2b2b2b;
@@ -34,24 +36,32 @@ class ToolRuntimeView(QWidget):
         """)
         header.addWidget(self.back_btn, 0)
 
-        self.title_label = QLabel("工具")
-        self.title_label.setStyleSheet("font-size: 24pt; font-weight: 300; margin-left: 12px;")
+        self.title_label = QLabel()
+        self.title_label.setStyleSheet("font-size: 16pt; font-weight: 600; margin-left: 12px;")
         header.addWidget(self.title_label)
         header.addStretch()
         root_layout.addLayout(header)
 
         self.container = QWidget()
-        self.container.setStyleSheet("background-color: #202020; border: 1px solid #333; border-radius: 6px;")
+        self.container.setStyleSheet("background-color: transparent; border: none;")
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(16, 16, 16, 16)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(0)
         root_layout.addWidget(self.container, 1)
+        self.retranslate_ui()
 
     def set_tool_widget(self, widget: QWidget, title: str):
         clear_layout(self.container_layout)
         self.container_layout.addWidget(widget)
+        self._tool_title = title
         self.title_label.setText(title)
 
     def clear(self):
         clear_layout(self.container_layout)
-        self.title_label.setText("工具")
+        self._tool_title = None
+        self.title_label.setText(self._translate("runtime.title"))
+
+    def retranslate_ui(self):
+        self.back_btn.setText(f"\uE72B {self._translate('runtime.back')}")
+        if self._tool_title is None:
+            self.title_label.setText(self._translate("runtime.title"))

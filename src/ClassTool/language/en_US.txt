@@ -1,0 +1,27 @@
+# ClassTool English language pack
+language.name = English
+app.title = ClassTool
+nav.home = Home
+nav.settings = Settings
+nav.about = About
+home.title = Welcome to the ClassTool classroom toolkit
+about.title = About ClassTool
+about.version = Version: 1.0.2
+about.developer = Developer: Mario_YU
+about.framework = Built with PySide6
+about.bilibili = Bilibili:
+about.github = GitHub:
+settings.title = Settings
+settings.theme = Theme
+settings.language = Language
+theme.dark = Dark
+theme.light = Light
+runtime.back = Back to home
+runtime.title = Tool
+tray.show = Show main window
+tray.exit = Exit
+dialog.tool_load_title = Tool Load Failed
+dialog.tool_load_message = Unable to load tool: {error}
+dialog.tool_page_message = Unable to create tool page: {error}
+dialog.tool_run_title = Tool Runtime Failed
+dialog.tool_run_message = Tool execution error: {error}

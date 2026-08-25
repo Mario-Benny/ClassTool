@@ -1,9 +1,9 @@
 # Packaging Guide
 
-ClassTool releases are intended to use this layout:
+ClassTool downloads use this layout:
 
 ```text
-ClassTool_pack/
+download/
 |-- ClassTool.exe
 |-- tools/
 `-- data/
@@ -25,8 +25,11 @@ scripts\build_release.cmd
 The package is generated at:
 
 ```text
-release\ClassTool_pack
+download\
 ```
+
+The build script embeds `src/ClassTool/language/` in the single EXE while
+keeping `tools/` and `data/` external.
 
 ## Icon
 

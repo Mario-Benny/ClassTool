@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
 """
-主窗口：组装组件，管理导航、主题、托盘和插件列表。
+主窗口：组装组件，管理导航、主题、语言、托盘和插件列表。
 """
 
 import os
 from typing import Dict
 
-from PySide6.QtCore import QFileSystemWatcher, QTimer, QPropertyAnimation, QEasingCurve, Qt
+from PySide6.QtCore import QFileSystemWatcher, QTimer, Qt
 from PySide6.QtGui import QPixmap, QColor, QIcon, QAction
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 
 from toolkit.core.plugin_loader import PluginLoader, PluginRuntimeError
 from toolkit.core.theme_manager import ThemeManager
+from toolkit.core.language_manager import LanguageManager
+from toolkit.core.settings import get_setting, set_setting
 from toolkit.ui.utils import clear_layout
 from .components.title_bar import TitleBar
 from .components.sidebar import Sidebar
@@ -28,13 +30,16 @@ class MainWindow(QMainWindow):
     def __init__(self, plugin_loader: PluginLoader):
         super().__init__()
         self.plugin_loader = plugin_loader
-        self.theme_manager = ThemeManager("dark")
+        saved_theme = get_setting("theme", "dark")
+        self.theme_manager = ThemeManager(
+            saved_theme if saved_theme in ThemeManager.THEMES else "dark"
+        )
+        self.language_manager = LanguageManager()
 
-        self.setWindowTitle("ClassTool")
+        self.setWindowTitle(self.t("app.title"))
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.resize(1000, 700)
 
-        self.sidebar_is_collapsed = False
         self.loaded_plugins: Dict[str, dict] = {}
         self.nav_buttons = {}
         self.tile_widgets = []
@@ -42,11 +47,19 @@ class MainWindow(QMainWindow):
 
         self.setup_tray()
         self.setup_ui()
+        self.language_manager.language_changed.connect(self.retranslate_ui)
         self.setup_watcher()
         self.refresh_tools()
 
-        self.nav_buttons["tools"].setChecked(True)
-        self.on_nav_clicked("tools")
+        self.nav_buttons["home"].setChecked(True)
+        self.on_nav_clicked("home")
+
+    def t(self, key: str, **values: object) -> str:
+        """返回主程序翻译文本。"""
+        return self.language_manager.translate(key, **values)
+
+    def set_language(self, language_code: str):
+        self.language_manager.set_language(language_code)
 
     # -------------------- UI 构建 --------------------
     def setup_ui(self):
@@ -69,93 +82,68 @@ class MainWindow(QMainWindow):
         self.content_stack = QStackedWidget()
         body.addWidget(self.content_stack)
 
-        self.tools_page = pages.create_welcome_page(self)
+        self.home_page = pages.create_home_page(self)
+        self.settings_page = pages.create_settings_page(self)
         self.about_page = pages.create_about_page(self)
-        self.tool_runtime_view = ToolRuntimeView()
-        self.tool_runtime_view.back_btn.clicked.connect(self.back_to_tools)
+        self.tool_runtime_view = ToolRuntimeView(self.t)
+        self.tool_runtime_view.back_btn.clicked.connect(self.back_to_home)
 
-        self.content_stack.addWidget(self.tools_page)
+        self.content_stack.addWidget(self.home_page)
+        self.content_stack.addWidget(self.settings_page)
         self.content_stack.addWidget(self.about_page)
         self.content_stack.addWidget(self.tool_runtime_view)
 
         nav_items = [
-            ("tools", "欢迎", "\uE71D"),
-            ("about", "关于", "\uE946"),
+            ("home", "nav.home"),
+            ("settings", "nav.settings"),
+            ("about", "nav.about"),
         ]
-        for key, label, icon in nav_items:
-            btn = self.sidebar.add_nav_button(key, label, icon)
+        self._nav_translation_keys = {}
+        for key, label_key in nav_items:
+            btn = self.sidebar.add_nav_button(key, self.t(label_key))
             self.nav_buttons[key] = btn
+            self._nav_translation_keys[key] = label_key
             btn.clicked.connect(lambda checked, k=key: self.on_nav_clicked(k))
-
-        self.sidebar_animation = QPropertyAnimation(self.sidebar, b"minimumWidth")
-        self.sidebar_animation.setDuration(250)
-        self.sidebar_animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        self.sidebar_animation.valueChanged.connect(self._on_sidebar_width_changed)
-
-        self.sidebar.hamburger_btn.clicked.connect(self.toggle_sidebar)
 
         self.refresh_timer = QTimer()
         self.refresh_timer.setSingleShot(True)
         self.refresh_timer.timeout.connect(self.refresh_tools)
 
-        self.apply_theme(self.theme_manager.current)
+        self.apply_theme(self.theme_manager.current, persist=False)
+        self.retranslate_ui()
 
-    def _on_sidebar_width_changed(self, width: int):
-        self.sidebar.setFixedWidth(width)
-        is_narrow = width < 100
-        for btn in self.nav_buttons.values():
-            btn.set_collapsed(is_narrow)
+    def retranslate_ui(self):
+        """在不重建插件页面的前提下刷新主程序文本。"""
+        self.setWindowTitle(self.t("app.title"))
+        for key, label_key in self._nav_translation_keys.items():
+            self.nav_buttons[key].set_text(self.t(label_key))
+        pages.retranslate_home_page(self)
+        pages.retranslate_settings_page(self)
+        pages.retranslate_about_page(self)
+        self.tool_runtime_view.retranslate_ui()
+        self.show_action.setText(self.t("tray.show"))
+        self.quit_action.setText(self.t("tray.exit"))
 
     # -------------------- 主题 --------------------
-    def apply_theme(self, theme: str):
+    def apply_theme(self, theme: str, persist: bool = True):
         self.theme_manager.set_theme(theme)
+        if persist:
+            set_setting("theme", self.theme_manager.current)
         self.setStyleSheet(self.theme_manager.get_global_style())
 
-        icon_color = self.theme_manager.get_colors()["icon_color"]
-        for btn in self.nav_buttons.values():
-            btn.icon_label.setStyleSheet(
-                f"font-family: 'Segoe MDL2 Assets'; font-size: 12pt; "
-                f"background: transparent; border: none; color: {icon_color};"
-            )
-            btn.update_style()
-
-        hover_bg = "rgba(255, 255, 255, 0.1)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
-        self.sidebar.hamburger_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                border: none;
-                color: {icon_color};
-                font-family: 'Segoe MDL2 Assets';
-                font-size: 12pt;
-                text-align: center;
-            }}
-            QPushButton:hover {{ background-color: {hover_bg}; }}
-        """)
-
         colors = self.theme_manager.get_colors()
-        self.tool_runtime_view.container.setStyleSheet(
-            f"background-color: {colors['bg_tool_runtime']}; "
-            f"border: 1px solid {colors['border_tool_runtime']};"
-        )
-        self.title_bar.title_label.setStyleSheet(f"font-size: 9pt; color: {colors['text_title']};")
+        self.sidebar.apply_theme(self.theme_manager.current, colors)
+        self.title_bar.apply_theme(colors, self.theme_manager.current)
+        pages.apply_page_theme(self)
 
     # -------------------- 导航 --------------------
     def on_nav_clicked(self, key: str):
         for nav_key, btn in self.nav_buttons.items():
             btn.setChecked(nav_key == key)
 
-        page_map = {"tools": 0, "about": 1}
+        page_map = {"home": 0, "settings": 1, "about": 2}
         if key in page_map:
             self.content_stack.setCurrentIndex(page_map[key])
-
-    # -------------------- 侧边栏折叠 --------------------
-    def toggle_sidebar(self):
-        start_width = self.sidebar.width()
-        end_width = 60 if not self.sidebar_is_collapsed else 200
-        self.sidebar_animation.setStartValue(start_width)
-        self.sidebar_animation.setEndValue(end_width)
-        self.sidebar_animation.start()
-        self.sidebar_is_collapsed = not self.sidebar_is_collapsed
 
     # -------------------- 工具列表 --------------------
     def refresh_tools(self):
@@ -188,7 +176,7 @@ class MainWindow(QMainWindow):
         tile_width = 150
         gap = self.tiles_layout.spacing()
         viewport_width = self.scroll_area.viewport().width() if self.scroll_area else 800
-        max_cols = max(1, (viewport_width + gap) // (tile_width + gap))
+        max_cols = min(3, max(1, (viewport_width + gap) // (tile_width + gap)))
 
         row, col = 0, 0
         for tile in self.tile_widgets:
@@ -207,10 +195,14 @@ class MainWindow(QMainWindow):
         try:
             module = self.plugin_loader.load_plugin_module(tool)
         except PluginRuntimeError as exc:
-            QMessageBox.warning(self, "工具加载失败", str(exc))
+            QMessageBox.warning(self, self.t("dialog.tool_load_title"), str(exc))
             return
         except Exception as exc:
-            QMessageBox.critical(self, "工具加载失败", f"无法加载工具：{exc}")
+            QMessageBox.critical(
+                self,
+                self.t("dialog.tool_load_title"),
+                self.t("dialog.tool_load_message", error=exc),
+            )
             return
 
         widget = None
@@ -220,7 +212,11 @@ class MainWindow(QMainWindow):
             elif hasattr(module, "get_widget"):
                 widget = module.get_widget()
         except Exception as exc:
-            QMessageBox.critical(self, "工具加载失败", f"无法创建工具页面：{exc}")
+            QMessageBox.critical(
+                self,
+                self.t("dialog.tool_load_title"),
+                self.t("dialog.tool_page_message", error=exc),
+            )
             return
 
         if widget is None:
@@ -228,16 +224,22 @@ class MainWindow(QMainWindow):
                 try:
                     module.run()
                 except Exception as exc:
-                    QMessageBox.critical(self, "工具运行失败", f"工具运行异常：{exc}")
+                    QMessageBox.critical(
+                        self,
+                        self.t("dialog.tool_run_title"),
+                        self.t("dialog.tool_run_message", error=exc),
+                    )
             return
 
         self.tool_runtime_view.set_tool_widget(widget, tool.get("name", tool_id))
+        self.sidebar.hide()
         self.content_stack.setCurrentWidget(self.tool_runtime_view)
 
-    def back_to_tools(self):
+    def back_to_home(self):
+        self.sidebar.show()
         self.content_stack.setCurrentIndex(0)
         for key, btn in self.nav_buttons.items():
-            btn.setChecked(key == "tools")
+            btn.setChecked(key == "home")
 
     # -------------------- 文件监视器 --------------------
     def setup_watcher(self):
@@ -255,17 +257,17 @@ class MainWindow(QMainWindow):
         pm.fill(QColor("#0078d7"))
         self.tray_icon.setIcon(QIcon(pm))
 
-        tray_menu = QMenu()
-        show_action = QAction("显示主界面", self)
-        show_action.triggered.connect(self.show_and_raise)
+        self.tray_menu = QMenu()
+        self.show_action = QAction(self.t("tray.show"), self)
+        self.show_action.triggered.connect(self.show_and_raise)
 
-        quit_action = QAction("退出", self)
-        quit_action.triggered.connect(self.exit_app)
+        self.quit_action = QAction(self.t("tray.exit"), self)
+        self.quit_action.triggered.connect(self.exit_app)
 
-        tray_menu.addAction(show_action)
-        tray_menu.addAction(quit_action)
+        self.tray_menu.addAction(self.show_action)
+        self.tray_menu.addAction(self.quit_action)
 
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
         self.tray_icon.show()
 

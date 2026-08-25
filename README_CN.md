@@ -1,5 +1,5 @@
 # ClassTool 中文说明
 
-中文 README 已迁移到更常见的文件名：
+项目主页已统一为中英文逐段对照的 README：
 
-[README.zh-CN.md](README.zh-CN.md)
+[阅读 ClassTool README](README.md)

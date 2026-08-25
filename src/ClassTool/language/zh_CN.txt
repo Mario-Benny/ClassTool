@@ -1,0 +1,27 @@
+# ClassTool 简体中文语言包
+language.name = 简体中文
+app.title = ClassTool
+nav.home = 首页
+nav.settings = 设置
+nav.about = 关于
+home.title = 欢迎使用 ClassTool 课堂工具集
+about.title = 关于 ClassTool
+about.version = 版本: 1.0.2
+about.developer = 开发者: Mario_YU
+about.framework = 基于 PySide6 构建
+about.bilibili = B站主页：
+about.github = GitHub 主页：
+settings.title = 设置
+settings.theme = 主题
+settings.language = 语言
+theme.dark = 深色
+theme.light = 浅色
+runtime.back = 返回首页
+runtime.title = 工具
+tray.show = 显示主界面
+tray.exit = 退出
+dialog.tool_load_title = 工具加载失败
+dialog.tool_load_message = 无法加载工具：{error}
+dialog.tool_page_message = 无法创建工具页面：{error}
+dialog.tool_run_title = 工具运行失败
+dialog.tool_run_message = 工具运行异常：{error}

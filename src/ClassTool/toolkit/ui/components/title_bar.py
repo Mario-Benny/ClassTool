@@ -13,51 +13,61 @@ class TitleBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(32)
+        self.setFixedHeight(40)
         self.setStyleSheet("background-color: transparent;")
         self.drag_pos = None
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 0, 0, 0)
+        layout.setContentsMargins(16, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.icon_label = QLabel("\uE71D")
-        self.icon_label.setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 10pt; color: white; margin-right: 10px;")
-        layout.addWidget(self.icon_label)
-
         self.title_label = QLabel("ClassTool")
-        self.title_label.setStyleSheet("font-size: 9pt; color: #ccc;")
+        self.title_label.setStyleSheet(
+            "font-family: 'Segoe UI Variable Display', 'Segoe UI'; "
+            "font-size: 15pt; font-weight: 700; color: #f2f2f2;"
+        )
         layout.addWidget(self.title_label)
 
         layout.addStretch()
 
-        btn_style = """
+        self._button_style = """
             QPushButton {
                 background-color: transparent;
                 border: none;
-                color: white;
                 font-family: 'Segoe MDL2 Assets';
                 font-size: 10pt;
                 width: 46px;
-                height: 32px;
+                height: 40px;
             }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 0.1); }
         """
 
         self.min_btn = QPushButton("\uE921")
-        self.min_btn.setStyleSheet(btn_style)
         self.min_btn.clicked.connect(lambda: self.window().showMinimized())
         layout.addWidget(self.min_btn)
 
         self.max_btn = QPushButton("\uE922")
-        self.max_btn.setStyleSheet(btn_style)
         self.max_btn.clicked.connect(self.toggle_maximize)
         layout.addWidget(self.max_btn)
 
         self.close_btn = QPushButton("\uE8BB")
-        self.close_btn.setStyleSheet(btn_style + "QPushButton:hover { background-color: #e81123; }")
         self.close_btn.clicked.connect(lambda: self.window().close())
         layout.addWidget(self.close_btn)
+        self.apply_theme({"text_title": "#f2f2f2", "text_primary": "white"}, "dark")
+
+    def apply_theme(self, colors: dict[str, str], theme: str):
+        """让文字标识与窗口按钮适配深浅主题。"""
+        hover_background = "rgba(255, 255, 255, 0.1)" if theme == "dark" else "rgba(0, 0, 0, 0.06)"
+        self.title_label.setStyleSheet(
+            "font-family: 'Segoe UI Variable Display', 'Segoe UI'; "
+            f"font-size: 15pt; font-weight: 700; color: {colors['text_title']};"
+        )
+        button_style = self._button_style + (
+            f"QPushButton {{ color: {colors['text_primary']}; }}"
+            f"QPushButton:hover {{ background-color: {hover_background}; }}"
+        )
+        self.min_btn.setStyleSheet(button_style)
+        self.max_btn.setStyleSheet(button_style)
+        self.close_btn.setStyleSheet(button_style + "QPushButton:hover { background-color: #e81123; color: white; }")
 
     def toggle_maximize(self):
         win = self.window()
