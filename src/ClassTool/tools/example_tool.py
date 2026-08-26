@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
-Minimal ClassTool plugin example.
-
-Copy this file into the runtime tools directory, then rename it to something
-like `hello_tool.py`.
-"""
+"""Minimal ClassTool plugin template for developers."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
@@ -30,7 +25,6 @@ def create_widget():
     layout.setSpacing(16)
 
     count = int(get_tool_config("example_tool_count") or 0)
-
     label = QLabel(f"Button clicked {count} time(s).")
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setStyleSheet("font-size: 18pt;")
@@ -55,4 +49,3 @@ def create_widget():
 
 def cleanup():
     """Release resources here if the plugin starts threads, timers, or devices."""
-    pass

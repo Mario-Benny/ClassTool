@@ -29,6 +29,8 @@ if not exist "%DOWNLOAD_DIR%\tools" mkdir "%DOWNLOAD_DIR%\tools"
 if not exist "%DOWNLOAD_DIR%\data" mkdir "%DOWNLOAD_DIR%\data"
 
 copy /y "%APP_DIR%\dist\ClassTool.exe" "%DOWNLOAD_DIR%\ClassTool.exe" >nul
+rem Keep the source-only plugin template out of release packages, including old leftovers.
+del /q "%DOWNLOAD_DIR%\tools\example_tool.py" 2>nul
 copy /y "%APP_DIR%\tools\calculator_tool.py" "%DOWNLOAD_DIR%\tools\" >nul
 copy /y "%APP_DIR%\tools\countdown_timer.py" "%DOWNLOAD_DIR%\tools\" >nul
 copy /y "%APP_DIR%\tools\document_camera_tool.py" "%DOWNLOAD_DIR%\tools\" >nul
