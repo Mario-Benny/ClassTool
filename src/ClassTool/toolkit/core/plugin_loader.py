@@ -8,12 +8,13 @@
 
 import ast
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Tuple
 
-from toolkit.core.paths import app_root, ensure_tools_dir
+from toolkit.core.paths import app_root, ensure_tools_dir, plugin_cache_path
 
 
 class PluginMetadataError(Exception):
@@ -25,6 +26,8 @@ class PluginRuntimeError(Exception):
 
 
 class PluginLoader:
+    CACHE_VERSION = 1
+
     def __init__(self, tools_dir: str = "tools"):
         path = Path(tools_dir)
         if tools_dir == "tools":
@@ -36,6 +39,70 @@ class PluginLoader:
         self._metadata_cache: Dict[str, Dict[str, Any]] = {}
         self._module_cache: Dict[str, Dict[str, Any]] = {}
         self._requirements_cache: Dict[Tuple[str, ...], List[str]] = {}
+        self._persistent_cache = self._load_persistent_cache()
+
+    # -------------------- 磁盘缓存 --------------------
+    @staticmethod
+    def _signature_to_list(signature: tuple[int, int]) -> list[int]:
+        return [signature[0], signature[1]]
+
+    @staticmethod
+    def _signature_from_record(record: dict[str, Any]) -> tuple[int, int] | None:
+        signature = record.get("signature")
+        if (
+            isinstance(signature, list)
+            and len(signature) == 2
+            and all(isinstance(item, int) for item in signature)
+        ):
+            return signature[0], signature[1]
+        return None
+
+    def _load_persistent_cache(self) -> dict[str, dict[str, Any]]:
+        path = plugin_cache_path()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if not isinstance(payload, dict) or payload.get("version") != self.CACHE_VERSION:
+            return {}
+        plugins = payload.get("plugins")
+        if not isinstance(plugins, dict):
+            return {}
+        return {
+            key: value
+            for key, value in plugins.items()
+            if isinstance(key, str) and isinstance(value, dict)
+        }
+
+    def _save_persistent_cache(self) -> None:
+        path = plugin_cache_path()
+        temp_path = path.with_name(f"{path.name}.tmp")
+        payload = {
+            "version": self.CACHE_VERSION,
+            "plugins": self._persistent_cache,
+        }
+        try:
+            temp_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temp_path.replace(path)
+        except OSError:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _cached_metadata(record: dict[str, Any], file_path: Path) -> Dict[str, Any] | None:
+        metadata = record.get("metadata")
+        if not isinstance(metadata, dict):
+            return None
+        result = dict(metadata)
+        result["path"] = str(file_path)
+        result["module"] = None
+        return result
 
     # -------------------- 插件发现 --------------------
     def _iter_plugin_files(self):
@@ -187,21 +254,49 @@ class PluginLoader:
         except (OSError, UnicodeError, SyntaxError, PluginMetadataError) as exc:
             return self._error_tool(file_path, f"读取失败: {exc}")
 
+    def _refresh_requirement_status(self, metadata: Dict[str, Any]) -> None:
+        """在命中磁盘缓存时仍检查当前运行环境中的依赖。"""
+        error = metadata.get("error")
+        if isinstance(error, str) and error.startswith("缺少依赖:"):
+            metadata.pop("error", None)
+        if "error" in metadata:
+            return
+
+        missing = self._missing_requirements(metadata.get("requirements", []))
+        if missing:
+            metadata["error"] = f"缺少依赖: {', '.join(missing)}"
+
     def load_plugins(self) -> List[Dict[str, Any]]:
         plugins = []
+        active_paths = set()
+        cache_changed = False
         for file_path in self._iter_plugin_files():
             try:
                 cache_key = str(file_path.resolve())
                 signature = self._file_signature(file_path)
             except OSError:
                 continue
+            active_paths.add(cache_key)
 
             cached = self._metadata_cache.get(cache_key)
 
             if cached and cached["signature"] == signature:
                 metadata = dict(cached["metadata"])
             else:
-                metadata = self._build_metadata(file_path)
+                disk_record = self._persistent_cache.get(cache_key)
+                if (
+                    disk_record is not None
+                    and self._signature_from_record(disk_record) == signature
+                ):
+                    metadata = self._cached_metadata(disk_record, file_path)
+                else:
+                    metadata = self._build_metadata(file_path)
+                    if metadata is not None:
+                        self._persistent_cache[cache_key] = {
+                            "signature": self._signature_to_list(signature),
+                            "metadata": dict(metadata),
+                        }
+                        cache_changed = True
                 if metadata is not None:
                     self._metadata_cache[cache_key] = {
                         "signature": signature,
@@ -209,7 +304,16 @@ class PluginLoader:
                     }
 
             if metadata is not None:
+                self._refresh_requirement_status(metadata)
                 plugins.append(metadata)
+
+        stale_paths = set(self._persistent_cache) - active_paths
+        if stale_paths:
+            for cache_key in stale_paths:
+                self._persistent_cache.pop(cache_key, None)
+            cache_changed = True
+        if cache_changed:
+            self._save_persistent_cache()
         return plugins
 
     # -------------------- 运行时加载 --------------------

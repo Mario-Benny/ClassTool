@@ -4,20 +4,30 @@
 主窗口：组装组件，管理导航、主题、语言、托盘和插件列表。
 """
 
+import json
 import os
+from pathlib import Path
 from typing import Dict
 
-from PySide6.QtCore import QFileSystemWatcher, QTimer, Qt
-from PySide6.QtGui import QPixmap, QColor, QIcon, QAction
+from PySide6.QtCore import QFileSystemWatcher, QTimer, Qt, QUrl, QRect
+from PySide6.QtGui import QPixmap, QColor, QIcon, QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QStackedWidget, QSystemTrayIcon, QMenu, QMessageBox
+    QStackedWidget, QSystemTrayIcon, QMenu, QMessageBox, QFileDialog
 )
 
+from toolkit.core.app_info import APP_VERSION, CHANGELOG_URL, GITHUB_URL, build_date
 from toolkit.core.plugin_loader import PluginLoader, PluginRuntimeError
 from toolkit.core.theme_manager import ThemeManager
 from toolkit.core.language_manager import LanguageManager
-from toolkit.core.settings import get_setting, set_setting
+from toolkit.core.paths import ensure_data_dir
+from toolkit.core.settings import (
+    get_all_settings,
+    get_setting,
+    replace_settings,
+    reset_settings,
+    set_setting,
+)
 from toolkit.ui.utils import clear_layout
 from .components.title_bar import TitleBar
 from .components.sidebar import Sidebar
@@ -44,15 +54,17 @@ class MainWindow(QMainWindow):
         self.nav_buttons = {}
         self.tile_widgets = []
         self._is_exiting = False
+        self.close_to_tray = bool(get_setting("close_to_tray", False))
 
         self.setup_tray()
         self.setup_ui()
         self.language_manager.language_changed.connect(self.retranslate_ui)
+        self._restore_window_state()
         self.setup_watcher()
-        self.refresh_tools()
 
         self.nav_buttons["home"].setChecked(True)
         self.on_nav_clicked("home")
+        QTimer.singleShot(0, self.refresh_tools)
 
     def t(self, key: str, **values: object) -> str:
         """返回主程序翻译文本。"""
@@ -83,14 +95,12 @@ class MainWindow(QMainWindow):
         body.addWidget(self.content_stack)
 
         self.home_page = pages.create_home_page(self)
-        self.settings_page = pages.create_settings_page(self)
-        self.about_page = pages.create_about_page(self)
+        self.settings_page = None
+        self.about_page = None
         self.tool_runtime_view = ToolRuntimeView(self.t)
         self.tool_runtime_view.back_btn.clicked.connect(self.back_to_home)
 
         self.content_stack.addWidget(self.home_page)
-        self.content_stack.addWidget(self.settings_page)
-        self.content_stack.addWidget(self.about_page)
         self.content_stack.addWidget(self.tool_runtime_view)
 
         nav_items = [
@@ -141,9 +151,25 @@ class MainWindow(QMainWindow):
         for nav_key, btn in self.nav_buttons.items():
             btn.setChecked(nav_key == key)
 
-        page_map = {"home": 0, "settings": 1, "about": 2}
-        if key in page_map:
-            self.content_stack.setCurrentIndex(page_map[key])
+        if key == "home":
+            self.content_stack.setCurrentWidget(self.home_page)
+        elif key == "settings":
+            self.content_stack.setCurrentWidget(self._ensure_settings_page())
+        elif key == "about":
+            self.content_stack.setCurrentWidget(self._ensure_about_page())
+
+    def _ensure_settings_page(self):
+        if self.settings_page is None:
+            self.settings_page = pages.create_settings_page(self)
+            self.content_stack.addWidget(self.settings_page)
+            pages.apply_page_theme(self)
+        return self.settings_page
+
+    def _ensure_about_page(self):
+        if self.about_page is None:
+            self.about_page = pages.create_about_page(self)
+            self.content_stack.addWidget(self.about_page)
+        return self.about_page
 
     # -------------------- 工具列表 --------------------
     def refresh_tools(self):
@@ -250,6 +276,135 @@ class MainWindow(QMainWindow):
     def _on_directory_changed(self):
         self.refresh_timer.start(300)
 
+    # -------------------- 设置与数据 --------------------
+    def set_close_to_tray(self, enabled: bool):
+        self.close_to_tray = bool(enabled)
+        set_setting("close_to_tray", self.close_to_tray)
+
+    def open_data_directory(self):
+        data_dir = ensure_data_dir()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(data_dir)))
+
+    def export_settings(self):
+        self._save_window_state()
+        default_path = ensure_data_dir() / "classtool-settings.json"
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            self.t("settings.export_settings"),
+            str(default_path),
+            "JSON (*.json)",
+        )
+        if not filename:
+            return
+        path = Path(filename)
+        if path.suffix.lower() != ".json":
+            path = path.with_suffix(".json")
+        try:
+            path.write_text(
+                json.dumps(get_all_settings(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                self.t("settings.export_failed_title"),
+                self.t("settings.export_failed_message", error=exc),
+            )
+
+    def import_settings(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            self.t("settings.import_settings"),
+            str(ensure_data_dir()),
+            "JSON (*.json)",
+        )
+        if not filename:
+            return
+        try:
+            payload = json.loads(Path(filename).read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError(self.t("settings.invalid_file"))
+            replace_settings(payload)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            QMessageBox.warning(
+                self,
+                self.t("settings.import_failed_title"),
+                self.t("settings.import_failed_message", error=exc),
+            )
+            return
+        self._apply_saved_preferences()
+
+    def reset_app_settings(self):
+        answer = QMessageBox.question(
+            self,
+            self.t("settings.reset_settings"),
+            self.t("settings.reset_confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        reset_settings()
+        self._apply_saved_preferences()
+
+    def _apply_saved_preferences(self):
+        saved_theme = get_setting("theme", "dark")
+        self.apply_theme(
+            saved_theme if saved_theme in ThemeManager.THEMES else "dark",
+            persist=False,
+        )
+        language_code = get_setting("language", LanguageManager.DEFAULT_LANGUAGE)
+        self.language_manager.set_language(language_code)
+        self.close_to_tray = bool(get_setting("close_to_tray", False))
+        self.retranslate_ui()
+
+    # -------------------- 窗口状态 --------------------
+    @staticmethod
+    def _setting_int(value, default: int) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+    def _restore_window_state(self):
+        state = get_setting("window_state", {})
+        if not isinstance(state, dict):
+            return
+
+        geometry = self.geometry()
+        width = max(720, self._setting_int(state.get("width"), geometry.width()))
+        height = max(520, self._setting_int(state.get("height"), geometry.height()))
+        restored = QRect(
+            self._setting_int(state.get("x"), geometry.x()),
+            self._setting_int(state.get("y"), geometry.y()),
+            width,
+            height,
+        )
+        screens = QApplication.screens()
+        if screens and not any(screen.availableGeometry().intersects(restored) for screen in screens):
+            available = QApplication.primaryScreen().availableGeometry()
+            restored.moveCenter(available.center())
+        self.setGeometry(restored)
+
+        if bool(state.get("maximized", False)):
+            QTimer.singleShot(0, self._restore_maximized_window)
+
+    def _restore_maximized_window(self):
+        self.showMaximized()
+        self.title_bar.sync_window_state()
+
+    def _save_window_state(self):
+        geometry = self.normalGeometry() if self.isMaximized() else self.geometry()
+        if not geometry.isValid():
+            geometry = self.geometry()
+        set_setting(
+            "window_state",
+            {
+                "x": geometry.x(),
+                "y": geometry.y(),
+                "width": geometry.width(),
+                "height": geometry.height(),
+                "maximized": self.isMaximized(),
+            },
+        )
+
     # -------------------- 托盘 --------------------
     def setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
@@ -275,6 +430,7 @@ class MainWindow(QMainWindow):
         if self._is_exiting:
             return
         self._is_exiting = True
+        self._save_window_state()
         self._cleanup_before_exit()
         app = QApplication.instance()
         if app is not None:
@@ -311,9 +467,17 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.hide)
             event.ignore()
         super().changeEvent(event)
+        if event.type() == event.Type.WindowStateChange and hasattr(self, "title_bar"):
+            self.title_bar.sync_window_state()
 
     def closeEvent(self, event):
+        if self.close_to_tray and not self._is_exiting:
+            self._save_window_state()
+            self.hide()
+            event.ignore()
+            return
         self._is_exiting = True
+        self._save_window_state()
         self._cleanup_before_exit()
         event.accept()
 

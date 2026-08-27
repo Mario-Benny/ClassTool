@@ -101,6 +101,10 @@ class TitleBar(QWidget):
             self.max_animation.finished.connect(on_finished)
             self.max_animation.start()
 
+    def sync_window_state(self):
+        """让最大化按钮图标与当前窗口状态保持一致。"""
+        self.max_btn.setText("\uE923" if self.window().isMaximized() else "\uE922")
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_pos = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()

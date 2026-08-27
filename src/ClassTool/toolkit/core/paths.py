@@ -52,6 +52,11 @@ def settings_path() -> Path:
     return ensure_data_dir() / "settings.json"
 
 
+def plugin_cache_path() -> Path:
+    """返回插件静态元信息缓存文件路径。"""
+    return ensure_data_dir() / "plugin_cache.json"
+
+
 def legacy_tools_config_path() -> Path:
     """返回旧版配置文件路径，仅用于迁移。"""
     return ensure_tools_dir() / "tools_data.json"

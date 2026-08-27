@@ -5,9 +5,10 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QScrollArea, QGridLayout, QFrame, QComboBox
+    QScrollArea, QGridLayout, QFrame, QComboBox, QPushButton, QCheckBox
 )
 
+from toolkit.core.app_info import APP_VERSION, CHANGELOG_URL, GITHUB_URL, build_date
 from .components.segmented_control import SegmentedControl
 
 
@@ -88,7 +89,7 @@ def create_about_page(main_window):
 
 
 def create_settings_page(main_window):
-    """创建只包含主题和语言的设置页。"""
+    """创建主题、语言和本地设置管理页面。"""
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(40, 40, 40, 40)
@@ -131,12 +132,44 @@ def create_settings_page(main_window):
 
     language_combo.currentIndexChanged.connect(on_language_change)
 
+    data_label = QLabel()
+    data_label.setStyleSheet("font-size: 11pt; margin-top: 8px;")
+    layout.addWidget(data_label)
+
+    data_actions = QHBoxLayout()
+    data_actions.setSpacing(10)
+    open_data_btn = QPushButton()
+    export_btn = QPushButton()
+    import_btn = QPushButton()
+    reset_btn = QPushButton()
+    for button in (open_data_btn, export_btn, import_btn, reset_btn):
+        button.setMinimumHeight(34)
+        data_actions.addWidget(button)
+    data_actions.addStretch()
+    layout.addLayout(data_actions)
+
+    close_to_tray_check = QCheckBox()
+    close_to_tray_check.setChecked(main_window.close_to_tray)
+    close_to_tray_check.toggled.connect(main_window.set_close_to_tray)
+    layout.addWidget(close_to_tray_check)
+
+    open_data_btn.clicked.connect(main_window.open_data_directory)
+    export_btn.clicked.connect(main_window.export_settings)
+    import_btn.clicked.connect(main_window.import_settings)
+    reset_btn.clicked.connect(main_window.reset_app_settings)
+
     layout.addStretch()
     page.title_label = title
     page.theme_label = theme_label
     page.theme_control = theme_control
     page.language_label = language_label
     page.language_combo = language_combo
+    page.data_label = data_label
+    page.open_data_btn = open_data_btn
+    page.export_btn = export_btn
+    page.import_btn = import_btn
+    page.reset_btn = reset_btn
+    page.close_to_tray_check = close_to_tray_check
     main_window.settings_page = page
     retranslate_settings_page(main_window)
     return page
@@ -150,7 +183,7 @@ def retranslate_home_page(main_window):
 
 def retranslate_about_page(main_window):
     """刷新关于页中属于主程序的文本。"""
-    if not hasattr(main_window, "about_page"):
+    if not getattr(main_window, "about_page", None):
         return
 
     page = main_window.about_page
@@ -159,7 +192,8 @@ def retranslate_about_page(main_window):
     page.info_label.setText(
         "\n".join(
             (
-                translate("about.version"),
+                translate("about.version", version=APP_VERSION),
+                translate("about.build_date", date=build_date()),
                 translate("about.developer"),
                 translate("about.framework"),
             )
@@ -170,15 +204,16 @@ def retranslate_about_page(main_window):
         '<a href="https://space.bilibili.com/3706969464506745">'
         'https://space.bilibili.com/3706969464506745</a><br>'
         f'{translate("about.github")} '
-        '<a href="https://github.com/Mario-Benny">'
-        'https://github.com/Mario-Benny</a>'
+        f'<a href="{GITHUB_URL}">{GITHUB_URL}</a><br>'
+        f'{translate("about.changelog")} '
+        f'<a href="{CHANGELOG_URL}">{CHANGELOG_URL}</a>'
     )
 
 
 
 def retranslate_settings_page(main_window):
     """刷新设置页中的主题和语言选项。"""
-    if not hasattr(main_window, "settings_page"):
+    if not getattr(main_window, "settings_page", None):
         return
 
     page = main_window.settings_page
@@ -201,11 +236,20 @@ def retranslate_settings_page(main_window):
         page.language_combo.findData(main_window.language_manager.current_language)
     )
     page.language_combo.blockSignals(False)
+    page.data_label.setText(translate("settings.data"))
+    page.open_data_btn.setText(translate("settings.open_data"))
+    page.export_btn.setText(translate("settings.export_settings"))
+    page.import_btn.setText(translate("settings.import_settings"))
+    page.reset_btn.setText(translate("settings.reset_settings"))
+    page.close_to_tray_check.blockSignals(True)
+    page.close_to_tray_check.setText(translate("settings.close_to_tray"))
+    page.close_to_tray_check.setChecked(main_window.close_to_tray)
+    page.close_to_tray_check.blockSignals(False)
 
 
 def apply_page_theme(main_window):
     """让设置控件随主程序主题切换。"""
-    if not hasattr(main_window, "settings_page"):
+    if not getattr(main_window, "settings_page", None):
         return
 
     colors = main_window.theme_manager.get_colors()
@@ -238,5 +282,41 @@ def apply_page_theme(main_window):
             selection-background-color: {selected_background};
             selection-color: white;
             outline: 0;
+        }}
+    """)
+    button_style = f"""
+        QPushButton {{
+            background: {colors['bg_sidebar']};
+            color: {colors['text_primary']};
+            border: 1px solid {colors['border_main']};
+            border-radius: 4px;
+            padding: 0 12px;
+            font-size: 10pt;
+        }}
+        QPushButton:hover {{
+            border-color: {selected_background};
+            background: {selected_background};
+            color: white;
+        }}
+        QPushButton:pressed {{ background: {colors['border_main']}; }}
+    """
+    for button in (
+        main_window.settings_page.open_data_btn,
+        main_window.settings_page.export_btn,
+        main_window.settings_page.import_btn,
+        main_window.settings_page.reset_btn,
+    ):
+        button.setStyleSheet(button_style)
+    main_window.settings_page.close_to_tray_check.setStyleSheet(f"""
+        QCheckBox {{ color: {colors['text_primary']}; font-size: 10pt; spacing: 8px; }}
+        QCheckBox::indicator {{
+            width: 16px;
+            height: 16px;
+            border: 1px solid {colors['border_main']};
+            background: {colors['bg_sidebar']};
+        }}
+        QCheckBox::indicator:checked {{
+            background: {selected_background};
+            border-color: {selected_background};
         }}
     """)

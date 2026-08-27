@@ -32,6 +32,11 @@ def _save_settings(data: dict[str, Any]) -> None:
     temp_path.replace(path)
 
 
+def get_all_settings() -> dict[str, Any]:
+    """返回可安全导出的主程序设置副本。"""
+    return dict(_load_settings())
+
+
 def get_setting(key: str, default: Any = None) -> Any:
     """返回一个主程序设置；文件损坏时安全回退到默认值。"""
     return _load_settings().get(key, default)
@@ -42,3 +47,15 @@ def set_setting(key: str, value: Any) -> None:
     data = _load_settings()
     data[key] = value
     _save_settings(data)
+
+
+def replace_settings(data: dict[str, Any]) -> None:
+    """使用已验证的字典整体替换主程序设置。"""
+    if not isinstance(data, dict):
+        raise ValueError("settings must be a dictionary")
+    _save_settings(dict(data))
+
+
+def reset_settings() -> None:
+    """恢复主程序默认设置，不影响插件数据。"""
+    _save_settings({})
