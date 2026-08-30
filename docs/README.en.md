@@ -6,8 +6,10 @@ ClassTool is a Windows desktop toolkit for classroom use. It uses a single-file 
 
 The release package has this layout:
 
+GitHub Releases provides versioned ZIP files, such as `ClassTool-v1.1.0-win-x64.zip`. After extraction, the layout is:
+
 ```text
-download/
+ClassTool-v1.1.0-win-x64/
 |-- ClassTool.exe            # Single-file host application
 |-- tools/                   # Released plugins
 `-- data/                    # User settings and plugin data
@@ -26,7 +28,7 @@ src/ClassTool/
 `-- main.py                  # Application entry point
 ```
 
-The root-level `scripts/build_release.cmd` creates the `download/` release package. `assets/logo.ico` is the Windows icon used during packaging.
+The root-level `scripts/build_release.cmd` creates a versioned package, ZIP file, and SHA-256 checksum under the local `release/` directory. Release assets should be uploaded to GitHub Releases instead of committed to the source repository. `assets/logo.ico` is the Windows icon used during packaging.
 
 ## 3. Run from Source
 
@@ -47,7 +49,7 @@ python main.py
 
 The host provides Home, Settings, and About pages. Home shows available tools; Settings provides theme and language controls. Language text lives in `src/ClassTool/language/`, currently `zh_CN.txt` and `en_US.txt`. These resources are embedded in the EXE during packaging and are not published as external runtime files.
 
-The selected theme and language are stored in `data/settings.json` beside the running program. This is user data and personal settings should not be committed to the repository.
+The selected theme, window state, and close behavior are stored in `data/settings.json` beside the running program. Static plugin metadata is cached in `data/plugin_cache.json` to reduce later startup scans. Both are user data and personal settings should not be committed to the repository.
 
 ## 5. Plugin Interface and Example
 
@@ -74,7 +76,7 @@ TOOL_INFO = {
 
 `name`, `color`, `icon`, and `description` are used by the tool tile. `requirements` declares modules needed by the plugin, while `cache` controls whether an imported plugin module is retained.
 
-See the complete working template: [example_tool.py](../src/ClassTool/tools/example_tool.py). It lives in the source plugin directory so developers can copy, rename, and adapt it directly. The build script explicitly excludes it from `download/tools/`.
+See the complete working template: [example_tool.py](../src/ClassTool/tools/example_tool.py). It lives in the source plugin directory so developers can copy, rename, and adapt it directly. The build script explicitly excludes it from the released package's `tools/` directory.
 
 Plugins that use threads, timers, cameras, temporary files, or other external resources should provide `cleanup()`. The host calls this hook during shutdown; the plugin should stop work and release its resources there.
 
@@ -102,7 +104,7 @@ Then, from the repository root, run:
 scripts\build_release.cmd
 ```
 
-The script uses PyInstaller to create `download/ClassTool.exe`, embeds language resources, and copies released plugins to `download/tools/`. `download/data/tools_data.json` is an empty initialization file. Do not publish personal `settings.json` files or real classroom data.
+The script uses PyInstaller to create `release/ClassTool-v<version>-win-x64.zip`, embeds language resources, and copies released plugins into the package's `tools/` directory. A matching `.sha256` checksum file is created beside the ZIP. Do not publish personal `settings.json`, `plugin_cache.json`, or real classroom data; upload the ZIP and checksum to [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases).
 
 The icon must be a valid Windows `.ico` file. If Explorer still shows an old icon after rebuilding, restart Explorer or clear the Windows icon cache.
 

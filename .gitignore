@@ -12,6 +12,7 @@ env/
 build/
 dist/
 release/
+download/
 *.spec
 *.exe
 *.dll
@@ -19,14 +20,6 @@ release/
 *.zip
 *.7z
 *.rar
-
-# Versioned download package
-!download/
-!download/ClassTool.exe
-!download/tools/
-!download/tools/*.py
-!download/data/
-!download/data/tools_data.json
 
 # Runtime data
 src/ClassTool/data/*

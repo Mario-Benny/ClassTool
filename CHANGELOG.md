@@ -5,7 +5,9 @@
 - Redesigned the main interface around Home, Settings, and About pages.
 - Added persistent theme selection and built-in Chinese/English UI language packs.
 - Added the voting plugin with an independent presentation window.
-- Added the versioned `download/` package layout for the Windows EXE and plugins.
+- Added persisted window state, close-to-tray preference, settings import/export, and About-page build information.
+- Added persistent static plugin metadata caching to reduce repeated startup scans.
+- Moved Windows binaries out of the source repository and into versioned GitHub Releases assets.
 
 ## 0.1.0
 

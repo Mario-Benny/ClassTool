@@ -8,7 +8,7 @@ ClassTool 让教师能在一个简洁的桌面程序中打开常用课堂工具�
 
 ClassTool gives teachers a simple desktop application for everyday classroom tools. The host is a single-file EXE, while tool plugins and user data remain in external directories for convenient use, updates, and extension.
 
-[下载发布包](download/) | [中文详细技术文档](docs/README.zh-CN.md) | [English Technical Documentation](docs/README.en.md)
+[下载最新版本 / Download Latest](https://github.com/Mario-Benny/ClassTool/releases/latest) | [中文详细技术文档](docs/README.zh-CN.md) | [English Technical Documentation](docs/README.en.md)
 
 ## 课堂工具 / Classroom Tools
 
@@ -30,12 +30,12 @@ ClassTool gives teachers a simple desktop application for everyday classroom too
 
 ## 下载与使用 / Download and Use
 
-可直接运行的 Windows 发布包在 [download/](download/) 中。请将以下三个项目保持在同一目录：
+可直接运行的 Windows 发布包在 [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases/latest) 中。下载对应的 ZIP 文件、解压后，请将以下三个项目保持在同一目录：
 
-The ready-to-run Windows package is in [download/](download/). Keep these three items in the same directory:
+The ready-to-run Windows package is available through [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases/latest). Download the ZIP asset, extract it, and keep these three items in the same directory:
 
 ```text
-download/
+ClassTool-v1.1.0-win-x64/
 |-- ClassTool.exe
 |-- tools/
 `-- data/

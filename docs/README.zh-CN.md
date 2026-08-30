@@ -6,8 +6,10 @@ ClassTool 是面向课堂场景的 Windows 桌面工具集，采用“单文件�
 
 发布包结构如下：
 
+GitHub Releases 提供版本化 ZIP 文件，例如 `ClassTool-v1.1.0-win-x64.zip`。解压后结构如下：
+
 ```text
-download/
+ClassTool-v1.1.0-win-x64/
 |-- ClassTool.exe            # 单文件主程序
 |-- tools/                   # 正式插件目录
 `-- data/                    # 用户设置与插件数据
@@ -26,7 +28,7 @@ src/ClassTool/
 `-- main.py                  # 程序入口
 ```
 
-根目录的 `scripts/build_release.cmd` 负责生成 `download/` 发布包。`assets/logo.ico` 是打包使用的 Windows 图标。
+根目录的 `scripts/build_release.cmd` 负责在本地 `release/` 生成版本化发布包、ZIP 文件和 SHA-256 校验文件。发布附件应上传到 GitHub Releases，而不是提交到源码仓库。`assets/logo.ico` 是打包使用的 Windows 图标。
 
 ## 3. 从源码运行
 
@@ -47,7 +49,7 @@ python main.py
 
 主程序提供首页、设置页和关于页。首页显示可用工具，设置页提供主题和语言选择。语言文本位于 `src/ClassTool/language/`，目前包含 `zh_CN.txt` 与 `en_US.txt`；打包时这些资源被写入 EXE，不会作为外置发布文件。
 
-用户选择的主题和语言保存于运行目录的 `data/settings.json`。该文件是用户数据，不应作为个人配置提交到仓库。
+用户选择的主题、窗口状态和关闭行为保存于运行目录的 `data/settings.json`。插件静态元信息缓存保存在 `data/plugin_cache.json`，用于减少后续启动时的扫描开销。这些文件均是用户数据，不应作为个人配置提交到仓库。
 
 ## 5. 插件接口与示例
 
@@ -74,7 +76,7 @@ TOOL_INFO = {
 
 `name`、`color`、`icon` 和 `description` 用于工具卡片展示；`requirements` 声明插件所需模块；`cache` 控制已导入的插件模块是否缓存。
 
-完整可运行的模板见 [example_tool.py](../src/ClassTool/tools/example_tool.py)。它位于源码插件目录中，便于开发者直接复制、重命名并改造；打包脚本会明确将其排除，不会复制到 `download/tools/`。
+完整可运行的模板见 [example_tool.py](../src/ClassTool/tools/example_tool.py)。它位于源码插件目录中，便于开发者直接复制、重命名并改造；打包脚本会明确将其排除，不会复制到正式发布包的 `tools/` 中。
 
 使用线程、计时器、摄像头、临时文件或其他外部资源的插件应提供 `cleanup()`。主程序退出时会调用该钩子，插件应在其中停止任务并释放资源。
 
@@ -102,7 +104,7 @@ python -m pip install -r requirements-dev.txt
 scripts\build_release.cmd
 ```
 
-脚本会使用 PyInstaller 生成 `download/ClassTool.exe`，内置语言资源，并将正式插件复制到 `download/tools/`。`download/data/tools_data.json` 是空的初始化数据文件；发布时不应放入个人的 `settings.json` 或真实课堂数据。
+脚本会使用 PyInstaller 生成本地 `release/ClassTool-v<版本号>-win-x64.zip`，内置语言资源，并将正式插件复制到发布包的 `tools/`。ZIP 同目录会生成 `.sha256` 校验文件。发布时不应放入个人的 `settings.json`、`plugin_cache.json` 或真实课堂数据；将 ZIP 与校验文件上传到 [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases) 即可。
 
 图标文件必须是有效的 Windows `.ico` 文件。若重新打包后资源管理器仍显示旧图标，可重启资源管理器或清理 Windows 图标缓存。
 
