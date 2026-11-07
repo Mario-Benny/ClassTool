@@ -18,9 +18,10 @@ file access, or third-party dependencies.
 ## Reporting a Vulnerability
 
 If you find a vulnerability, please open a private report if GitHub security
-advisories are enabled for the repository. If private reporting is unavailable,
-open a GitHub issue with a minimal description and avoid posting exploit details
-publicly.
+advisories are enabled for the repository. Do not publish exploit details,
+credentials, tokens, private classroom data, or a proof of concept in a public
+issue. If private reporting is unavailable, open a public issue only to request
+a private contact channel and include no technical details.
 
 Please include:
 

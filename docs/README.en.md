@@ -1,119 +1,76 @@
-# ClassTool Technical Documentation
+# ClassTool
 
-## 1. Overview
+> A lightweight Windows desktop toolkit for classroom use.
 
-ClassTool is a Windows desktop toolkit for classroom use. It uses a single-file host application, external Python plugins, and external runtime data. The host owns windows, themes, language, navigation, tray behavior, and plugin lifecycle management; plugins provide individual classroom features.
+ClassTool brings common classroom utilities together in a clean desktop application. Teachers can choose a tool directly from the Home page without searching through menus or completing complex setup. The host supports Simplified Chinese, English, light and dark themes, and external plugins.
 
-The release package has this layout:
+[中文说明](README.md) | [Download](release/) | [English Technical Documentation](docs/README.en.md) | [Security Policy](SECURITY.md)
 
-GitHub Releases provides versioned ZIP files, such as `ClassTool-v1.1.0-win-x64.zip`. After extraction, the layout is:
+## Included Tools
 
-```text
-ClassTool-v1.1.0-win-x64/
-|-- ClassTool.exe            # Single-file host application
-|-- tools/                   # Released plugins
-`-- data/                    # User settings and plugin data
-```
+| Tool | Purpose |
+| --- | --- |
+| Countdown Timer | Runs classroom countdowns up to 99 hours, 99 minutes, and 99 seconds. |
+| Random Picker | Randomly selects a student or item from a list. |
+| Screen Doodle | Freezes the screen for temporary annotations and explanations. |
+| Calculator | Handles common classroom calculations. |
+| Document Camera | Uses a camera to present printed materials or physical objects. |
+| Voting | Opens an independent voting window and counts votes in real time. |
 
-`ClassTool.exe` includes the Python runtime, PySide6 dependencies, and language resources, so target Windows computers do not need Python installed. Keep `tools/` and `data/` external and beside the EXE.
+## Key Features
 
-## 2. Source Layout
+- **Tools on the Home page**: available tools are visible as soon as the application opens.
+- **No separate Python installation**: both installer and portable packages include the required runtime.
+- **Plugin-based expansion**: compatible `.py` plugins can be added to the external `tools/` directory.
+- **Chinese and English interface**: the display language can be changed from Settings.
+- **Light and dark themes**: the interface can be adjusted for different classroom environments.
+- **External runtime data**: settings, logs, and plugin data remain under `data/` for easier backup and troubleshooting.
 
-```text
-src/ClassTool/
-|-- language/                # Embedded language text
-|-- toolkit/                 # Host core and user interface
-|-- tools/                   # Bundled plugins and the example plugin
-|-- data/                    # Local development data; do not commit real content
-`-- main.py                  # Application entry point
-```
+## Choose a Download
 
-The root-level `scripts/build_release.cmd` creates a versioned package, ZIP file, and SHA-256 checksum under the local `release/` directory. Release assets should be uploaded to GitHub Releases instead of committed to the source repository. `assets/logo.ico` is the Windows icon used during packaging.
+Current packages are available from the repository's [release](release/) directory. Versioned historical packages can also be published through [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases).
 
-## 3. Run from Source
+| Package | Recommended for | How to use it |
+| --- | --- | --- |
+| Installer `ClassTool-v*-Setup.exe` | Normal use; recommended for most users | Run the installer, select the required plugins, and finish installation. |
+| Portable `ClassTool-v*-win-x64-portable.zip` | USB drives, temporary computers, or use without installation | Extract the complete ZIP and run `ClassTool.exe` inside the extracted directory. |
 
-ClassTool requires Windows 10 or later and Python 3.10 or later. From the repository root, install dependencies first:
+The portable build uses a multi-file layout. Do not copy `ClassTool.exe` by itself or remove `_internal/`; the application cannot start without its bundled dependencies.
 
-```bat
-python -m pip install -r requirements.txt
-```
+## System Requirements
 
-Then start the host:
+- 64-bit Windows 10 or Windows 11.
+- Administrator privileges for the installer.
+- A working camera and the appropriate Windows permissions for Document Camera.
+- School computer security policies may restrict Screen Doodle, context-menu registration, or other system integrations.
 
-```bat
-cd src\ClassTool
-python main.py
-```
+## Quick Start
 
-## 4. Host and Language System
+### Installer
 
-The host provides Home, Settings, and About pages. Home shows available tools; Settings provides theme and language controls. Language text lives in `src/ClassTool/language/`, currently `zh_CN.txt` and `en_US.txt`. These resources are embedded in the EXE during packaging and are not published as external runtime files.
+1. Download and run `ClassTool-v*-Setup.exe`.
+2. Choose the installation directory and classroom plugins to install.
+3. Start ClassTool from the desktop or Start menu shortcut.
 
-The selected theme, window state, and close behavior are stored in `data/settings.json` beside the running program. Static plugin metadata is cached in `data/plugin_cache.json` to reduce later startup scans. Both are user data and personal settings should not be committed to the repository.
+The installer prefers `D:\ClassTool`. If drive D is unavailable, it falls back to the Windows `Program Files\ClassTool` directory. It creates desktop and Start menu shortcuts, an uninstall entry, and desktop-background context-menu items for installed plugins.
 
-## 5. Plugin Interface and Example
+### Portable Package
 
-Plugins are ordinary Python files placed in `tools/`. At startup, ClassTool reads each plugin's `TOOL_INFO` statically. A plugin module is imported only after the user opens that tool. This reduces startup imports and avoids initialization side effects from unused plugins.
+1. Extract `ClassTool-v*-win-x64-portable.zip` completely.
+2. Keep `ClassTool.exe`, `_internal/`, `tools/`, and `data/` in their original relative locations.
+3. Double-click `ClassTool.exe`.
 
-A plugin must provide at least one of these entry points:
+The portable package includes three maintenance scripts for rebuilding shortcuts, registering the desktop context menu, and removing the context menu. Administrator privileges may be required when registering system integrations.
 
-- `create_widget()`: returns a `QWidget` page.
-- `get_widget()`: a compatibility entry point equivalent to `create_widget()`.
-- `run()`: runs a non-visual task.
+## Plugin Security
 
-A minimal plugin exposes metadata such as:
+ClassTool plugins are not sandboxed. A plugin has permissions comparable to the host application and may access files, networks, cameras, microphones, or the clipboard. Install plugins only from trusted sources and inspect their source code and dependencies before running them. See [SECURITY.md](SECURITY.md) for details.
 
-```python
-TOOL_INFO = {
-    "name": "Tool name",
-    "color": "#2D89EF",
-    "icon": "\uECAA",
-    "description": "Tool description",
-    "requirements": ["PySide6.QtWidgets"],
-    "cache": True,
-}
-```
+## Learn More
 
-`name`, `color`, `icon`, and `description` are used by the tool tile. `requirements` declares modules needed by the plugin, while `cache` controls whether an imported plugin module is retained.
-
-See the complete working template: [example_tool.py](../src/ClassTool/tools/example_tool.py). It lives in the source plugin directory so developers can copy, rename, and adapt it directly. The build script explicitly excludes it from the released package's `tools/` directory.
-
-Plugins that use threads, timers, cameras, temporary files, or other external resources should provide `cleanup()`. The host calls this hook during shutdown; the plugin should stop work and release its resources there.
-
-## 6. Plugin Data and Third-Party Dependencies
-
-Plugins can read and write configuration through `get_tool_config()` and `set_tool_config()` in `toolkit.core.tools_config`. Data is stored in `data/tools_data.json` beside the running application. Do not commit data files containing real user content.
-
-Third-party plugins run inside the host and do not have an independent Python environment. When a plugin needs packages such as `requests` or `numpy`, its author must:
-
-1. Declare the dependency in `TOOL_INFO["requirements"]`.
-2. Install the dependency in the packaging environment.
-3. Add appropriate PyInstaller options, such as `--hidden-import` or `--collect-all`, so the dependency is collected into the EXE.
-
-## 7. Build and Release
-
-Install development dependencies first:
-
-```bat
-python -m pip install -r requirements-dev.txt
-```
-
-Then, from the repository root, run:
-
-```bat
-scripts\build_release.cmd
-```
-
-The script uses PyInstaller to create `release/ClassTool-v<version>-win-x64.zip`, embeds language resources, and copies released plugins into the package's `tools/` directory. A matching `.sha256` checksum file is created beside the ZIP. Do not publish personal `settings.json`, `plugin_cache.json`, or real classroom data; upload the ZIP and checksum to [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases).
-
-The icon must be a valid Windows `.ico` file. If Explorer still shows an old icon after rebuilding, restart Explorer or clear the Windows icon cache.
-
-## 8. Security
-
-ClassTool does not sandbox plugins. A plugin has permissions similar to a local Python program and may access files, networks, cameras, microphones, or the clipboard. Install plugins only from trusted sources and inspect their source, dependencies, and data access behavior first.
-
-Plugin authors should describe required permissions and must not collect credentials, tokens, classroom data, or personal information without consent. See [SECURITY.md](../SECURITY.md) for the complete policy.
-
-## 9. Contributing
-
-Bug reports, improvements, and new classroom plugins are welcome. Before contributing, ensure that the host starts, the changed plugin opens, and its dependencies are documented. Read [CONTRIBUTING.md](../CONTRIBUTING.md) first.
+- [English Technical Documentation](docs/README.en.md)
+- [中文说明](README.md)
+- [中文详细技术文档](docs/README.zh-CN.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [MIT License](LICENSE)

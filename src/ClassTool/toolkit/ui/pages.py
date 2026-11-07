@@ -153,6 +153,11 @@ def create_settings_page(main_window):
     close_to_tray_check.toggled.connect(main_window.set_close_to_tray)
     layout.addWidget(close_to_tray_check)
 
+    context_menu_check = QCheckBox()
+    context_menu_check.setChecked(main_window.context_menu_enabled)
+    context_menu_check.toggled.connect(main_window.set_context_menu_enabled)
+    layout.addWidget(context_menu_check)
+
     open_data_btn.clicked.connect(main_window.open_data_directory)
     export_btn.clicked.connect(main_window.export_settings)
     import_btn.clicked.connect(main_window.import_settings)
@@ -170,6 +175,7 @@ def create_settings_page(main_window):
     page.import_btn = import_btn
     page.reset_btn = reset_btn
     page.close_to_tray_check = close_to_tray_check
+    page.context_menu_check = context_menu_check
     main_window.settings_page = page
     retranslate_settings_page(main_window)
     return page
@@ -246,6 +252,11 @@ def retranslate_settings_page(main_window):
     page.close_to_tray_check.setChecked(main_window.close_to_tray)
     page.close_to_tray_check.blockSignals(False)
 
+    page.context_menu_check.blockSignals(True)
+    page.context_menu_check.setText(translate("settings.context_menu"))
+    page.context_menu_check.setChecked(main_window.context_menu_enabled)
+    page.context_menu_check.blockSignals(False)
+
 
 def apply_page_theme(main_window):
     """让设置控件随主程序主题切换。"""
@@ -307,7 +318,7 @@ def apply_page_theme(main_window):
         main_window.settings_page.reset_btn,
     ):
         button.setStyleSheet(button_style)
-    main_window.settings_page.close_to_tray_check.setStyleSheet(f"""
+    checkbox_style = f"""
         QCheckBox {{ color: {colors['text_primary']}; font-size: 10pt; spacing: 8px; }}
         QCheckBox::indicator {{
             width: 16px;
@@ -319,4 +330,9 @@ def apply_page_theme(main_window):
             background: {selected_background};
             border-color: {selected_background};
         }}
-    """)
+    """
+    for checkbox in (
+        main_window.settings_page.close_to_tray_check,
+        main_window.settings_page.context_menu_check,
+    ):
+        checkbox.setStyleSheet(checkbox_style)

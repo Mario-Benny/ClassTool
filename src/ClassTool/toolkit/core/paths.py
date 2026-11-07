@@ -28,6 +28,11 @@ def language_dir() -> Path:
     return resource_root() / "language"
 
 
+def version_info_path() -> Path:
+    """返回版本信息文件路径，随语言资源一起打进 EXE。"""
+    return resource_root() / "version.json"
+
+
 def ensure_tools_dir() -> Path:
     """返回 tools 目录，不存在时自动创建。"""
     tools_dir = app_root() / "tools"
@@ -55,6 +60,13 @@ def settings_path() -> Path:
 def plugin_cache_path() -> Path:
     """返回插件静态元信息缓存文件路径。"""
     return ensure_data_dir() / "plugin_cache.json"
+
+
+def ensure_log_dir() -> Path:
+    """返回日志目录，位于 data 下，随设置导入导出与数据目录入口一起可达。"""
+    log_dir = ensure_data_dir() / "logs"
+    log_dir.mkdir(exist_ok=True)
+    return log_dir
 
 
 def legacy_tools_config_path() -> Path:

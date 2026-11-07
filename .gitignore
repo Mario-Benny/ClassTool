@@ -21,6 +21,13 @@ download/
 *.7z
 *.rar
 
+# Keep only finalized top-level release assets in Git.
+!release/
+release/*
+!release/*.exe
+!release/*.zip
+!release/*.sha256
+
 # Runtime data
 src/ClassTool/data/*
 !src/ClassTool/data/.gitkeep

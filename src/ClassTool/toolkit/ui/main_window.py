@@ -5,7 +5,6 @@
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Dict
 
@@ -17,10 +16,13 @@ from PySide6.QtWidgets import (
 )
 
 from toolkit.core.app_info import APP_VERSION, CHANGELOG_URL, GITHUB_URL, build_date
+from toolkit.core.app_logging import get_logger
+from toolkit.core import context_menu
 from toolkit.core.plugin_loader import PluginLoader, PluginRuntimeError
 from toolkit.core.theme_manager import ThemeManager
 from toolkit.core.language_manager import LanguageManager
 from toolkit.core.paths import ensure_data_dir
+from toolkit.core.safe_io import atomic_write_text, read_text_with_fallback
 from toolkit.core.settings import (
     get_all_settings,
     get_setting,
@@ -34,6 +36,8 @@ from .components.sidebar import Sidebar
 from .components.metro_tile import MetroTile
 from .components.tool_runtime_view import ToolRuntimeView
 from . import pages
+
+_logger = get_logger("main_window")
 
 
 class MainWindow(QMainWindow):
@@ -55,6 +59,9 @@ class MainWindow(QMainWindow):
         self.tile_widgets = []
         self._is_exiting = False
         self.close_to_tray = bool(get_setting("close_to_tray", False))
+        self.context_menu_enabled = bool(
+            get_setting("context_menu_enabled", context_menu.DEFAULT_ENABLED)
+        )
 
         self.setup_tray()
         self.setup_ui()
@@ -173,11 +180,20 @@ class MainWindow(QMainWindow):
 
     # -------------------- 工具列表 --------------------
     def refresh_tools(self):
+        # 先取列表，成功后才清空重建：反过来的顺序一旦抛异常就留下一张永久空白首页。
+        try:
+            plugins = self.plugin_loader.load_plugins()
+        except Exception:
+            _logger.exception("工具列表刷新失败，保留当前列表")
+            return
+
+        self._ensure_watching()
+
         clear_layout(self.tiles_layout)
         self.tile_widgets.clear()
 
-        plugins = self.plugin_loader.load_plugins()
         self.loaded_plugins = {plugin["id"]: plugin for plugin in plugins}
+        self._sync_context_menu(plugins)
 
         for tool in plugins:
             tile = MetroTile(
@@ -221,9 +237,11 @@ class MainWindow(QMainWindow):
         try:
             module = self.plugin_loader.load_plugin_module(tool)
         except PluginRuntimeError as exc:
+            _logger.warning("插件加载失败 %s: %s", tool_id, exc)
             QMessageBox.warning(self, self.t("dialog.tool_load_title"), str(exc))
             return
         except Exception as exc:
+            _logger.exception("插件加载出现未预期错误: %s", tool_id)
             QMessageBox.critical(
                 self,
                 self.t("dialog.tool_load_title"),
@@ -238,6 +256,7 @@ class MainWindow(QMainWindow):
             elif hasattr(module, "get_widget"):
                 widget = module.get_widget()
         except Exception as exc:
+            _logger.exception("插件页面创建失败: %s", tool_id)
             QMessageBox.critical(
                 self,
                 self.t("dialog.tool_load_title"),
@@ -250,6 +269,7 @@ class MainWindow(QMainWindow):
                 try:
                     module.run()
                 except Exception as exc:
+                    _logger.exception("插件运行失败: %s", tool_id)
                     QMessageBox.critical(
                         self,
                         self.t("dialog.tool_run_title"),
@@ -269,9 +289,27 @@ class MainWindow(QMainWindow):
 
     # -------------------- 文件监视器 --------------------
     def setup_watcher(self):
-        tools_path = os.path.abspath(self.plugin_loader.tools_dir)
-        self.watcher = QFileSystemWatcher([tools_path])
+        self.watcher = QFileSystemWatcher()
         self.watcher.directoryChanged.connect(self._on_directory_changed)
+        self._ensure_watching()
+
+    def _ensure_watching(self):
+        """重新注册被监视器丢弃的目录。
+
+        目录被删除后 QFileSystemWatcher 会静默放弃该路径且永不自行恢复（实测：删除
+        重建后目录不再出现在 directories() 中，此后增删插件毫无反应）。删除那一下
+        仍能收到事件，所以把重注册挂在刷新路径上。但重建本身已无人通知，因此连父目录
+        一起监视——tools 被重建时父目录会收到事件，覆盖安装与用户挪动目录都能自愈。
+        """
+        for watch_dir in self._watch_targets():
+            path = str(watch_dir)
+            if path not in self.watcher.directories():
+                _logger.info("注册目录监视: %s", path)
+                self.watcher.addPath(path)
+
+    def _watch_targets(self):
+        tools_dir = Path(self.plugin_loader.tools_dir)
+        return [d for d in (tools_dir, tools_dir.parent) if d.is_dir()]
 
     def _on_directory_changed(self):
         self.refresh_timer.start(300)
@@ -280,6 +318,32 @@ class MainWindow(QMainWindow):
     def set_close_to_tray(self, enabled: bool):
         self.close_to_tray = bool(enabled)
         set_setting("close_to_tray", self.close_to_tray)
+
+    # -------------------- 桌面右键菜单 --------------------
+    def set_context_menu_enabled(self, enabled: bool, persist: bool = True):
+        """设置页开关：开启时整棵重建，关闭时删掉本程序写入的子树。
+
+        关闭时不判断注册表里是否真有菜单：用户可能用随包的 CMD 单独注册过，
+        那不属于主程序的设置，主程序只清理自己按开关建出来的东西。
+        """
+        enabled = bool(enabled)
+        previous = self.context_menu_enabled
+        self.context_menu_enabled = enabled
+        if persist:
+            set_setting("context_menu_enabled", enabled)
+
+        if enabled:
+            self._sync_context_menu(self.loaded_plugins.values())
+        elif previous:
+            context_menu.unregister()
+
+    def _sync_context_menu(self, tools):
+        """插件列表变化后重新注册；关闭状态下不触碰注册表。"""
+        if not self.context_menu_enabled:
+            return
+        entries = list(tools)
+        if context_menu.register(entries):
+            _logger.info("桌面右键菜单已更新: %d 项", len(entries))
 
     def open_data_directory(self):
         data_dir = ensure_data_dir()
@@ -300,9 +364,9 @@ class MainWindow(QMainWindow):
         if path.suffix.lower() != ".json":
             path = path.with_suffix(".json")
         try:
-            path.write_text(
+            atomic_write_text(
+                path,
                 json.dumps(get_all_settings(), ensure_ascii=False, indent=2),
-                encoding="utf-8",
             )
         except OSError as exc:
             QMessageBox.warning(
@@ -321,7 +385,7 @@ class MainWindow(QMainWindow):
         if not filename:
             return
         try:
-            payload = json.loads(Path(filename).read_text(encoding="utf-8"))
+            payload = json.loads(read_text_with_fallback(Path(filename)))
             if not isinstance(payload, dict):
                 raise ValueError(self.t("settings.invalid_file"))
             replace_settings(payload)
@@ -356,6 +420,10 @@ class MainWindow(QMainWindow):
         language_code = get_setting("language", LanguageManager.DEFAULT_LANGUAGE)
         self.language_manager.set_language(language_code)
         self.close_to_tray = bool(get_setting("close_to_tray", False))
+        self.set_context_menu_enabled(
+            bool(get_setting("context_menu_enabled", context_menu.DEFAULT_ENABLED)),
+            persist=False,
+        )
         self.retranslate_ui()
 
     # -------------------- 窗口状态 --------------------
@@ -394,20 +462,25 @@ class MainWindow(QMainWindow):
         geometry = self.normalGeometry() if self.isMaximized() else self.geometry()
         if not geometry.isValid():
             geometry = self.geometry()
-        set_setting(
-            "window_state",
-            {
-                "x": geometry.x(),
-                "y": geometry.y(),
-                "width": geometry.width(),
-                "height": geometry.height(),
-                "maximized": self.isMaximized(),
-            },
-        )
+        try:
+            set_setting(
+                "window_state",
+                {
+                    "x": geometry.x(),
+                    "y": geometry.y(),
+                    "width": geometry.width(),
+                    "height": geometry.height(),
+                    "maximized": self.isMaximized(),
+                },
+            )
+        except OSError as exc:
+            # 写设置失败不能拦住退出流程，否则托盘"退出"点下去毫无反应。
+            _logger.warning("窗口状态保存失败: %s", exc)
 
     # -------------------- 托盘 --------------------
     def setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
+        self.tray_available = QSystemTrayIcon.isSystemTrayAvailable()
         pm = QPixmap(24, 24)
         pm.fill(QColor("#0078d7"))
         self.tray_icon.setIcon(QIcon(pm))
@@ -424,7 +497,10 @@ class MainWindow(QMainWindow):
 
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
-        self.tray_icon.show()
+        if self.tray_available:
+            self.tray_icon.show()
+        else:
+            _logger.warning("系统托盘当前不可用，关闭窗口时将直接退出")
 
     def exit_app(self):
         if self._is_exiting:
@@ -456,14 +532,22 @@ class MainWindow(QMainWindow):
             self.show_and_raise()
 
     def show_and_raise(self):
+        was_maximized = bool(self.windowState() & Qt.WindowState.WindowMaximized)
         self.show()
-        self.showNormal()
+        if was_maximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
         self.activateWindow()
         self.raise_()
 
     # -------------------- 窗口事件 --------------------
     def changeEvent(self, event):
-        if event.type() == event.Type.WindowStateChange and self.isMinimized():
+        if (
+            event.type() == event.Type.WindowStateChange
+            and self.isMinimized()
+            and QSystemTrayIcon.isSystemTrayAvailable()
+        ):
             QTimer.singleShot(0, self.hide)
             event.ignore()
         super().changeEvent(event)
@@ -471,7 +555,11 @@ class MainWindow(QMainWindow):
             self.title_bar.sync_window_state()
 
     def closeEvent(self, event):
-        if self.close_to_tray and not self._is_exiting:
+        if (
+            self.close_to_tray
+            and not self._is_exiting
+            and QSystemTrayIcon.isSystemTrayAvailable()
+        ):
             self._save_window_state()
             self.hide()
             event.ignore()

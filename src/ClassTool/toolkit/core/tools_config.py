@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from toolkit.core.app_logging import get_logger
 from toolkit.core.paths import legacy_tools_config_path, tools_config_path
+from toolkit.core.safe_io import atomic_write_text, backup_corrupt, read_text_with_fallback
 
 
 def _get_config_path() -> Path:
@@ -18,8 +20,8 @@ def _migrate_legacy_config():
         return
 
     try:
-        path.write_text(legacy_path.read_text(encoding="utf-8"), encoding="utf-8")
-    except OSError:
+        atomic_write_text(path, read_text_with_fallback(legacy_path))
+    except (OSError, UnicodeDecodeError):
         _save_config({})
 
 
@@ -30,22 +32,27 @@ def _load_config() -> dict:
         return {}
 
     try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
+        text = read_text_with_fallback(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        get_logger("tools_config").warning("插件数据文件读取失败: %s", exc)
         return {}
 
-    return data if isinstance(data, dict) else {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        backup_corrupt(path)
+        get_logger("tools_config").error("插件数据文件不是合法 JSON: %s", exc)
+        return {}
+
+    if not isinstance(data, dict):
+        backup_corrupt(path)
+        get_logger("tools_config").error("插件数据文件顶层不是对象，已按空数据继续运行")
+        return {}
+    return data
 
 
 def _save_config(data: dict):
-    path = _get_config_path()
-    tmp_path = path.with_name(path.name + ".tmp")
-
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-    tmp_path.replace(path)
+    atomic_write_text(_get_config_path(), json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def ensure_tools_config():

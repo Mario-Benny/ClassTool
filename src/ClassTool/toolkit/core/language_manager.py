@@ -2,16 +2,19 @@
 
 """主程序多语言资源的加载、回退和切换。"""
 
+import json
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
+from toolkit.core.app_logging import get_logger
 from toolkit.core.paths import language_dir
+from toolkit.core.safe_io import read_text_with_fallback
 from toolkit.core.settings import get_setting, set_setting
 
 
 class LanguageManager(QObject):
-    """从内置 TXT 语言包加载主程序文本。"""
+    """从内置 JSON 语言包加载主程序文本。"""
 
     language_changed = Signal()
 
@@ -35,7 +38,7 @@ class LanguageManager(QObject):
         if not directory.is_dir():
             return languages
 
-        for path in sorted(directory.glob("*.txt")):
+        for path in sorted(directory.glob("*.json")):
             translations = self._parse_language_file(path)
             if translations:
                 languages[path.stem] = translations
@@ -43,21 +46,26 @@ class LanguageManager(QObject):
 
     @staticmethod
     def _parse_language_file(path: Path) -> dict[str, str]:
-        translations: dict[str, str] = {}
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return translations
+        """读一份语言包，出问题时丢掉这一份。
 
-        for raw_line in lines:
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            if key:
-                translations[key] = value.strip()
-        return translations
+        不做损坏备份：这是随包资源，程序从不往回写，原件没有覆盖风险；丢掉之后
+        translate 会自动回退到默认语言，再退化成翻译键本身，主程序照常能用。
+        """
+        try:
+            data = json.loads(read_text_with_fallback(path))
+        except (OSError, ValueError) as exc:
+            get_logger("language").error("语言包读取失败 %s: %s", path, exc)
+            return {}
+
+        if not isinstance(data, dict):
+            get_logger("language").error("语言包顶层不是对象: %s", path)
+            return {}
+
+        return {
+            key: value
+            for key, value in data.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
 
     def available_languages(self) -> list[tuple[str, str]]:
         """返回可用语言的内部标识和供用户阅读的名称。"""

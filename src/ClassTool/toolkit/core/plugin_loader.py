@@ -7,14 +7,20 @@
 """
 
 import ast
+import importlib.metadata
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Tuple
 
+from toolkit.core.app_logging import get_logger
 from toolkit.core.paths import app_root, ensure_tools_dir, plugin_cache_path
+from toolkit.core.safe_io import atomic_write_text, read_text_with_fallback
+
+_logger = get_logger("plugin_loader")
 
 
 class PluginMetadataError(Exception):
@@ -27,6 +33,14 @@ class PluginRuntimeError(Exception):
 
 class PluginLoader:
     CACHE_VERSION = 1
+    PACKAGE_IMPORT_ALIASES = {
+        "beautifulsoup4": ("bs4",),
+        "opencv-python": ("cv2",),
+        "pillow": ("PIL",),
+        "pyyaml": ("yaml",),
+        "python-dateutil": ("dateutil",),
+        "scikit-learn": ("sklearn",),
+    }
 
     def __init__(self, tools_dir: str = "tools"):
         path = Path(tools_dir)
@@ -39,6 +53,7 @@ class PluginLoader:
         self._metadata_cache: Dict[str, Dict[str, Any]] = {}
         self._module_cache: Dict[str, Dict[str, Any]] = {}
         self._requirements_cache: Dict[Tuple[str, ...], List[str]] = {}
+        self._distribution_imports: dict[str, tuple[str, ...]] | None = None
         self._persistent_cache = self._load_persistent_cache()
 
     # -------------------- 磁盘缓存 --------------------
@@ -61,7 +76,9 @@ class PluginLoader:
         path = plugin_cache_path()
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if path.exists():
+                _logger.warning("插件缓存不可用，本次改为重新扫描: %s", exc)
             return {}
 
         if not isinstance(payload, dict) or payload.get("version") != self.CACHE_VERSION:
@@ -76,23 +93,18 @@ class PluginLoader:
         }
 
     def _save_persistent_cache(self) -> None:
-        path = plugin_cache_path()
-        temp_path = path.with_name(f"{path.name}.tmp")
         payload = {
             "version": self.CACHE_VERSION,
             "plugins": self._persistent_cache,
         }
         try:
-            temp_path.write_text(
+            atomic_write_text(
+                plugin_cache_path(),
                 json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
             )
-            temp_path.replace(path)
-        except OSError:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        except OSError as exc:
+            # 缓存写不进磁盘只影响下次启动的扫描速度，不值得干扰运行。
+            _logger.warning("插件缓存写入失败: %s", exc)
 
     @staticmethod
     def _cached_metadata(record: dict[str, Any], file_path: Path) -> Dict[str, Any] | None:
@@ -134,8 +146,19 @@ class PluginLoader:
                 return node.value
         return None
 
+    @staticmethod
+    def _read_source(file_path: Path) -> str:
+        """读取插件源码，编码回退规则见 safe_io。"""
+        try:
+            return read_text_with_fallback(file_path)
+        except UnicodeDecodeError as exc:
+            raise PluginMetadataError(
+                "插件源码不是 UTF-8 或 GBK 编码，请用记事本'另存为'选择 UTF-8 后重试"
+                f"（原始错误: {exc}）"
+            ) from exc
+
     def _read_tool_info(self, file_path: Path) -> dict | None:
-        source = file_path.read_text(encoding="utf-8")
+        source = self._read_source(file_path)
         if "TOOL_INFO" not in source:
             return None
 
@@ -212,6 +235,60 @@ class PluginLoader:
         name = name.split("[", 1)[0]
         return name.strip().replace("-", "_")
 
+    @staticmethod
+    def _canonical_distribution_name(name: str) -> str:
+        return re.sub(r"[-_.]+", "-", name).lower()
+
+    def _requirement_to_distribution_name(self, requirement: str) -> str:
+        name = requirement.strip().split(";", 1)[0].strip()
+        for sep in ("==", ">=", "<=", "~=", "!=", ">", "<"):
+            name = name.split(sep, 1)[0]
+        name = name.split("[", 1)[0].strip()
+        return self._canonical_distribution_name(name)
+
+    def _get_distribution_imports(self) -> dict[str, tuple[str, ...]]:
+        if self._distribution_imports is not None:
+            return self._distribution_imports
+
+        mapping: dict[str, list[str]] = {}
+        try:
+            packages = importlib.metadata.packages_distributions()
+        except Exception as exc:
+            _logger.warning("无法读取已安装包与导入名映射: %s", exc)
+            packages = {}
+        for module_name, distributions in packages.items():
+            for distribution in distributions:
+                key = self._canonical_distribution_name(distribution)
+                mapping.setdefault(key, []).append(module_name)
+        self._distribution_imports = {
+            key: tuple(dict.fromkeys(values)) for key, values in mapping.items()
+        }
+        return self._distribution_imports
+
+    def _requirement_available(self, requirement: str) -> bool:
+        module_name = self._requirement_to_module_name(requirement)
+        if module_name and self._module_available(module_name):
+            return True
+
+        distribution = self._requirement_to_distribution_name(requirement)
+        candidates = list(self.PACKAGE_IMPORT_ALIASES.get(distribution, ()))
+        candidates.extend(self._get_distribution_imports().get(distribution, ()))
+        return any(self._module_available(candidate) for candidate in dict.fromkeys(candidates))
+
+    @staticmethod
+    def _module_available(module_name: str) -> bool:
+        """探测依赖是否可用，任何探测失败都按"不可用"处理。
+
+        find_spec 对多级点号名（如 torch.nn）不是返回 None，而是导入父包失败时
+        直接抛 ModuleNotFoundError。这个异常若一路穿出 load_plugins，首页会整个
+        空白且没有提示——一个插件的依赖写法就能拖垮全部工具。
+        """
+        try:
+            return importlib.util.find_spec(module_name) is not None
+        except Exception as exc:
+            _logger.warning("依赖探测失败 %s: %s", module_name, exc)
+            return False
+
     def _missing_requirements(self, requirements: List[str]) -> List[str]:
         cache_key = tuple(requirements)
         cached = self._requirements_cache.get(cache_key)
@@ -220,8 +297,7 @@ class PluginLoader:
 
         missing = []
         for req in requirements:
-            module_name = self._requirement_to_module_name(req)
-            if not module_name or importlib.util.find_spec(module_name) is None:
+            if not self._requirement_available(req):
                 missing.append(req)
         self._requirements_cache[cache_key] = list(missing)
         return missing
@@ -251,7 +327,15 @@ class PluginLoader:
             if missing:
                 tool_info["error"] = f"缺少依赖: {', '.join(missing)}"
             return tool_info
-        except (OSError, UnicodeError, SyntaxError, PluginMetadataError) as exc:
+        except PluginMetadataError as exc:
+            # 这里抛出的是我们自己写好的可执行提示，直接展示给用户。
+            _logger.warning("插件元信息不合规 %s: %s", file_path, exc)
+            return self._error_tool(file_path, str(exc))
+        except SyntaxError as exc:
+            _logger.warning("插件源码语法错误 %s: %s", file_path, exc)
+            return self._error_tool(file_path, f"插件语法有误：第 {exc.lineno} 行 {exc.msg}")
+        except (OSError, UnicodeError) as exc:
+            _logger.exception("读取插件失败: %s", file_path)
             return self._error_tool(file_path, f"读取失败: {exc}")
 
     def _refresh_requirement_status(self, metadata: Dict[str, Any]) -> None:
@@ -270,42 +354,53 @@ class PluginLoader:
         plugins = []
         active_paths = set()
         cache_changed = False
-        for file_path in self._iter_plugin_files():
+        try:
+            plugin_files = list(self._iter_plugin_files())
+        except OSError as exc:
+            _logger.warning("无法列出 tools 目录: %s", exc)
+            plugin_files = []
+
+        for file_path in plugin_files:
             try:
                 cache_key = str(file_path.resolve())
                 signature = self._file_signature(file_path)
-            except OSError:
-                continue
-            active_paths.add(cache_key)
+                active_paths.add(cache_key)
 
-            cached = self._metadata_cache.get(cache_key)
+                cached = self._metadata_cache.get(cache_key)
 
-            if cached and cached["signature"] == signature:
-                metadata = dict(cached["metadata"])
-            else:
-                disk_record = self._persistent_cache.get(cache_key)
-                if (
-                    disk_record is not None
-                    and self._signature_from_record(disk_record) == signature
-                ):
-                    metadata = self._cached_metadata(disk_record, file_path)
+                if cached and cached["signature"] == signature:
+                    metadata = dict(cached["metadata"])
                 else:
-                    metadata = self._build_metadata(file_path)
+                    disk_record = self._persistent_cache.get(cache_key)
+                    if (
+                        disk_record is not None
+                        and self._signature_from_record(disk_record) == signature
+                    ):
+                        metadata = self._cached_metadata(disk_record, file_path)
+                    else:
+                        metadata = self._build_metadata(file_path)
+                        if metadata is not None:
+                            self._persistent_cache[cache_key] = {
+                                "signature": self._signature_to_list(signature),
+                                "metadata": dict(metadata),
+                            }
+                            cache_changed = True
                     if metadata is not None:
-                        self._persistent_cache[cache_key] = {
-                            "signature": self._signature_to_list(signature),
+                        self._metadata_cache[cache_key] = {
+                            "signature": signature,
                             "metadata": dict(metadata),
                         }
-                        cache_changed = True
-                if metadata is not None:
-                    self._metadata_cache[cache_key] = {
-                        "signature": signature,
-                        "metadata": dict(metadata),
-                    }
 
-            if metadata is not None:
-                self._refresh_requirement_status(metadata)
-                plugins.append(metadata)
+                if metadata is not None:
+                    self._refresh_requirement_status(metadata)
+                    plugins.append(metadata)
+            except OSError as exc:
+                # 扫描期间文件被删除或占用是正常竞态，跳过这一个即可。
+                _logger.info("跳过暂不可读的插件 %s: %s", file_path, exc)
+            except Exception as exc:
+                # 任何一个插件的意外故障只能让它自己变成错误磁贴，不能带走整页工具。
+                _logger.exception("插件扫描失败: %s", file_path)
+                plugins.append(self._error_tool(file_path, f"扫描失败: {exc}"))
 
         stale_paths = set(self._persistent_cache) - active_paths
         if stale_paths:
@@ -370,6 +465,7 @@ class PluginLoader:
             spec.loader.exec_module(module)
         except Exception as exc:
             sys.modules.pop(module_name, None)
+            _logger.exception("插件模块执行失败: %s", file_path)
             raise PluginRuntimeError(f"运行时加载失败: {exc}") from exc
 
         if not self._has_entry_point(module):
@@ -394,4 +490,8 @@ class PluginLoader:
                 try:
                     cleanup()
                 except Exception:
-                    pass
+                    # 摄像头、线程这类资源没释放必须留下痕迹，否则现场无从查证。
+                    _logger.exception(
+                        "插件 cleanup 失败，资源可能未释放: %s",
+                        getattr(module, "__name__", module),
+                    )
