@@ -4,7 +4,7 @@
 
 ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开程序后即可从首页选择工具，不需要搜索功能或进行复杂配置。主程序支持简体中文、英文、明亮主题和暗色主题，并通过外置插件扩展功能。
 
-[English README](README.en.md) | [下载程序](release/) | [中文技术文档](docs/README.zh-CN.md) | [安全说明](SECURITY.md)
+[English README](README.en.md) | [下载程序](release/) | [中文技术文档](docs/README.zh-CN.md) | [安全说明](docs/SECURITY.md)
 
 ## 内置工具
 
@@ -25,6 +25,7 @@ ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开�
 - **中英文界面**：可在设置页切换简体中文和英文。
 - **明暗主题**：可根据教室环境切换明亮或暗色主题。
 - **数据保持外置**：设置、日志和插件数据保存在 `data/` 目录，便于备份和排错。
+- **安全的应用内更新**：支持后台检查、断点续传、失败重试、磁盘空间检查及 SHA-256 二次校验，安装前仍由用户确认。
 
 ## 下载选择
 
@@ -54,6 +55,8 @@ ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开�
 
 安装器优先使用 `D:\ClassTool`。如果 D 盘不可用，则使用 Windows 的 `Program Files\ClassTool`。安装器会创建桌面快捷方式、开始菜单项目、卸载入口和已安装插件的桌面右键菜单。
 
+主程序可在启动后检查 GitHub Releases 中的稳定版更新。安装包下载完成并通过大小与 SHA-256 校验后，程序会询问是否退出并启动安装器；不会在未确认的情况下自动安装。
+
 ### 绿色版
 
 1. 完整解压 `ClassTool-v*-Grean.zip`。
@@ -64,13 +67,13 @@ ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开�
 
 ## 插件安全
 
-ClassTool 插件不是沙盒程序。插件与主程序拥有相近的本机权限，可能访问文件、网络、摄像头、麦克风或剪贴板。请只使用可信来源的插件，并在运行前检查其源码和依赖。详细说明见 [SECURITY.md](SECURITY.md)。
+ClassTool 插件不是沙盒程序。插件与主程序拥有相近的本机权限，可能访问文件、网络、摄像头、麦克风或剪贴板。请只使用可信来源的插件，并在运行前检查其源码和依赖。详细说明见 [SECURITY.md](docs/SECURITY.md)。
 
 ## 进一步了解
 
 - [中文详细技术文档](docs/README.zh-CN.md)
 - [English README](README.en.md)
 - [English Technical Documentation](docs/README.en.md)
-- [参与贡献](CONTRIBUTING.md)
-- [更新记录](CHANGELOG.md)
+- [参与贡献](docs/CONTRIBUTING.md)
+- [更新记录](docs/CHANGELOG.md)
 - [MIT License](LICENSE)

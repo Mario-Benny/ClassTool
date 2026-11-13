@@ -4,6 +4,18 @@
 
 - No unreleased user-facing changes yet.
 
+## 1.2.2 - 2026-11-13
+
+- Added a production-ready in-app update engine for stable GitHub Releases.
+- Added automatic and manual update checks, resumable downloads, retry backoff, stall detection, disk-space checks, and strict HTTP Range validation.
+- Added installer size and SHA-256 verification both after download and immediately before launch.
+- Added a trusted update-cache boundary and a detached Windows installer launcher that waits for ClassTool to exit.
+- Added bilingual update controls and progress states to Settings.
+- Added `update.json` generation to the NSIS build workflow, including the minimum updater version and release metadata.
+- Replaced the obsolete single-file repository build script with the current PyInstaller `onedir` and NSIS workflow.
+- Added automated tests for manifest validation, version ordering, Range responses, retry classification, disk-space policy, and installer re-verification.
+- Separated the English user README from the English technical documentation and repaired repository-relative documentation links.
+
 ## 1.2.1 - 2026-11-08
 
 - Redesigned the main interface around Home, Settings, and About pages.

@@ -14,8 +14,9 @@
 6. [插件依赖与安全边界](#6-插件依赖与安全边界)
 7. [打包与发布原则](#7-打包与发布原则)
 8. [安装器与绿色版](#8-安装器与绿色版)
-9. [日志与故障排查](#9-日志与故障排查)
-10. [测试与贡献](#10-测试与贡献)
+9. [应用内更新](#9-应用内更新)
+10. [日志与故障排查](#10-日志与故障排查)
+11. [测试与贡献](#11-测试与贡献)
 
 ## 1. 架构概览
 
@@ -39,12 +40,14 @@ ClassTool/
 |   |-- README.zh-CN.md          # 中文技术文档
 |   `-- README.en.md             # 英文技术文档
 |-- release/                     # 当前安装包、绿色版和校验文件
+|-- scripts/                     # PyInstaller、NSIS 和运行维护脚本
 |-- src/ClassTool/
 |   |-- language/                # 内置 JSON 语言资源
 |   |-- toolkit/                 # 主程序核心与界面代码
 |   |-- tools/                   # 正式插件和源码示例
 |   |-- main.py                  # 程序入口
 |   `-- version.json             # 唯一版本号来源
+|-- tests/                       # 更新模块等自动化测试
 |-- requirements.txt             # 运行依赖
 `-- requirements-dev.txt         # 打包与开发依赖
 ```
@@ -133,7 +136,7 @@ TOOL_INFO = {
 
 打包后的 ClassTool 使用内置 Python 环境。第三方插件需要额外库时，该库必须已经包含在发布包的 `_internal/` 中；仅把插件 `.py` 文件复制到无 Python 环境的电脑上，无法补充新的二进制依赖。制作发行版时应在打包环境安装依赖，并按库的实际情况为 PyInstaller 增加 `--hidden-import`、`--collect-submodules` 或 `--collect-all`。
 
-插件不在沙盒中运行，拥有与主程序相近的文件、网络和设备访问能力。请仅运行可信来源的插件。插件作者应明确说明其网络、摄像头、麦克风、剪贴板和文件访问需求。完整策略见 [SECURITY.md](../SECURITY.md)。
+插件不在沙盒中运行，拥有与主程序相近的文件、网络和设备访问能力。请仅运行可信来源的插件。插件作者应明确说明其网络、摄像头、麦克风、剪贴板和文件访问需求。完整策略见 [SECURITY.md](SECURITY.md)。
 
 ## 7. 打包与发布原则
 
@@ -151,11 +154,19 @@ TOOL_INFO = {
 
 PyInstaller 构建时应使用干净的 `PATH`。如果开发终端向 `PATH` 注入了其他软件的 Qt、ICU、OpenSSL 或多媒体 DLL，PyInstaller 可能错误收集这些文件，导致程序离开开发终端后出现 `DLL load failed while importing QtCore`。
 
-仓库的 `release/` 只保存准备公开的顶层发布附件：安装器、绿色版 ZIP 和对应的 SHA-256 文件。PyInstaller 的 `build/`、`dist/`、`.spec`、日志和临时目录不应提交。历史版本建议作为 GitHub Releases 附件发布。
+仓库的 `release/` 只保存准备公开的顶层发布附件：安装器、绿色版 ZIP、SHA-256 文件和 `update.json`。PyInstaller 的 `build/`、`dist/`、`.spec`、日志和临时目录不应提交。历史版本建议作为 GitHub Releases 附件发布。
+
+仓库构建入口为：
 
 ```bat
-certutil -hashfile ClassTool-v1.2.1-Setup.exe SHA256
-certutil -hashfile ClassTool-v1.2.1-win-x64-portable.zip SHA256
+scripts\build_release.cmd
+```
+
+该脚本从 `src/ClassTool/version.json` 读取版本，执行 PyInstaller `onedir` 构建和 NSIS 安装器构建，并在 `release/` 生成安装器、SHA-256 文件与更新清单。脚本要求 Python 可从 `PATH` 访问，并能够找到 NSIS `makensis.exe`。
+
+```bat
+certutil -hashfile ClassTool-v1.2.2-Setup.exe SHA256
+certutil -hashfile ClassTool-v1.2.2-win-x64-portable.zip SHA256
 ```
 
 ## 8. 安装器与绿色版
@@ -187,7 +198,29 @@ ClassTool-v<版本>-win-x64-portable/
 
 `data/` 中的用户文件和第三方插件需要保持明确的数据保留策略，避免升级或卸载时误删用户内容。
 
-## 9. 日志与故障排查
+## 9. 应用内更新
+
+更新逻辑位于 `toolkit/core/update_manager.py` 与 `update_launcher.py`，通过 PySide6 `QtNetwork` 在界面线程中执行非阻塞网络请求。主程序默认读取：
+
+```text
+https://github.com/Mario-Benny/ClassTool/releases/latest/download/update.json
+```
+
+稳定版 Release 必须同时上传版本化安装器和名为 `update.json` 的附件。更新清单包含版本号、最低更新引擎版本、安装器 URL、文件大小和 SHA-256。客户端只接受 HTTPS GitHub 地址及受信任的 GitHub Release 重定向域名。
+
+更新流程包括：
+
+1. 启动后延迟检查，或由用户在设置页手动检查。
+2. 严格比较三段数字版本号。
+3. 将安装器下载到 `%LOCALAPPDATA%\ClassTool\updates`。
+4. 使用 `.part` 与状态文件进行断点续传，并对临时网络错误执行退避重试。
+5. 校验磁盘空间、HTTP Range、文件大小和 SHA-256。
+6. 下载完成后通知用户；只有用户确认时才退出主程序。
+7. 启动安装器前再次校验路径与 SHA-256，然后等待主程序完全退出并请求管理员权限。
+
+自动检查失败不会打断主程序使用；手动检查会显示错误，详细原因同时写入日志。更新清单不是代码签名，发布者仍应保护 GitHub 账户，并可在后续版本中增加独立数字签名。
+
+## 10. 日志与故障排查
 
 遇到启动、插件或设备问题时，首先检查 `data/logs/`。
 
@@ -199,8 +232,10 @@ ClassTool-v<版本>-win-x64-portable/
 | 程序关闭后仍在后台 | 从系统托盘完全退出，并检查插件的 `cleanup()` 是否停止线程和设备。 |
 | 摄像头不可用 | 检查 Windows 隐私权限、设备占用情况和多媒体依赖。 |
 | 右键菜单失效 | 以管理员身份运行注册脚本，或先清除后重新注册。 |
+| 更新检查返回 HTTP 404 | 确认最新 GitHub Release 已上传名称完全一致的 `update.json`。 |
+| 更新下载校验失败 | 确认 Release 安装器与 `update.json` 中的大小、URL 和 SHA-256 来自同一次构建。 |
 
-## 10. 测试与贡献
+## 11. 测试与贡献
 
 提交修改前至少完成：
 
@@ -210,5 +245,6 @@ ClassTool-v<版本>-win-x64-portable/
 4. 若修改资源管理逻辑，确认退出后没有残留 ClassTool 进程。
 5. 若修改打包流程，在非开发终端环境测试绿色版和安装版。
 6. 确认发布包不包含个人设置、真实课堂数据、令牌或构建缓存。
+7. 运行 `python -m unittest discover -s tests -v`，确认更新清单、Range 响应、重试和安装前校验测试通过。
 
-更多贡献要求见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+更多贡献要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。

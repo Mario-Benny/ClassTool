@@ -1,0 +1,15 @@
+{
+    "schema_version":  1,
+    "version":  "1.2.2",
+    "minimum_updater_version":  "1.0.0",
+    "channel":  "stable",
+    "mandatory":  false,
+    "published_at":  "2026-11-13",
+    "installer":  {
+                      "name":  "ClassTool-v1.2.2-Setup.exe",
+                      "url":  "https://github.com/Mario-Benny/ClassTool/releases/download/v1.2.2/ClassTool-v1.2.2-Setup.exe",
+                      "size":  39144786,
+                      "sha256":  "e2312c73d32c852a357bcf40e6d8585b8ed73ffaec14b7dacd3e67d47431885f"
+                  },
+    "release_notes_url":  "https://github.com/Mario-Benny/ClassTool/releases/tag/v1.2.2"
+}

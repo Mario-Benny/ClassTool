@@ -35,7 +35,7 @@ def _sanitize_settings(data: dict[str, Any], strict: bool = False) -> dict[str, 
         _invalid_setting("language", strict)
         result.pop("language", None)
 
-    for key in ("close_to_tray", "context_menu_enabled"):
+    for key in ("close_to_tray", "context_menu_enabled", "auto_check_updates"):
         if key in result and not isinstance(result[key], bool):
             _invalid_setting(key, strict)
             result.pop(key, None)

@@ -38,6 +38,13 @@ Security-sensitive areas include:
 - Runtime data stored under `data/`.
 - Camera, screen, clipboard, and file-system access.
 - Packaging behavior that includes third-party dependencies.
+- Update manifests, trusted download hosts, cached installers, and installer launch behavior.
 
 Third-party plugins are maintained by their authors unless they are included in
 this repository.
+
+## Update Security Model
+
+ClassTool accepts stable update metadata only from its configured GitHub Release manifest URL. Installer downloads require HTTPS, trusted GitHub redirect hosts, an expected size, and a SHA-256 digest. The installer is verified after download and again immediately before launch, and it must remain inside the dedicated update cache directory.
+
+SHA-256 confirms that the installer matches the downloaded manifest, but it does not independently authenticate a compromised publishing account. Protect repository release permissions and report unexpected `update.json` or installer changes as a security issue. A separately signed manifest may be added in a future release.

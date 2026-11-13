@@ -30,6 +30,7 @@ from toolkit.core.settings import (
     reset_settings,
     set_setting,
 )
+from toolkit.core.update_manager import UpdateManager
 from toolkit.ui.utils import clear_layout
 from .components.title_bar import TitleBar
 from .components.sidebar import Sidebar
@@ -62,6 +63,9 @@ class MainWindow(QMainWindow):
         self.context_menu_enabled = bool(
             get_setting("context_menu_enabled", context_menu.DEFAULT_ENABLED)
         )
+        self.auto_check_updates = bool(get_setting("auto_check_updates", True))
+        self._manual_update_check = False
+        self._prompted_update_version = ""
 
         self.setup_tray()
         self.setup_ui()
@@ -69,9 +73,17 @@ class MainWindow(QMainWindow):
         self._restore_window_state()
         self.setup_watcher()
 
+        self.update_manager = UpdateManager(self)
+        self.update_manager.state_changed.connect(self._on_update_state_changed)
+        self.update_manager.download_progress.connect(self._on_update_progress)
+        self.update_manager.update_ready.connect(self._on_update_ready)
+        self.update_manager.no_update.connect(self._on_no_update)
+        self.update_manager.error.connect(self._on_update_error)
+
         self.nav_buttons["home"].setChecked(True)
         self.on_nav_clicked("home")
         QTimer.singleShot(0, self.refresh_tools)
+        QTimer.singleShot(10_000, self._start_auto_update_check)
 
     def t(self, key: str, **values: object) -> str:
         """返回主程序翻译文本。"""
@@ -79,6 +91,118 @@ class MainWindow(QMainWindow):
 
     def set_language(self, language_code: str):
         self.language_manager.set_language(language_code)
+
+    # -------------------- 软件更新 --------------------
+    def set_auto_check_updates(self, enabled: bool):
+        self.auto_check_updates = bool(enabled)
+        set_setting("auto_check_updates", self.auto_check_updates)
+
+    def _start_auto_update_check(self):
+        if self.auto_check_updates and not self._is_exiting:
+            self.check_for_updates(manual=False)
+
+    def check_for_updates(self, manual: bool = True):
+        if (
+            manual
+            and self.update_manager.state == "ready"
+            and self.update_manager.ready_installer is not None
+        ):
+            self._prompted_update_version = ""
+            self._on_update_ready(
+                self.update_manager.latest_version,
+                str(self.update_manager.ready_installer),
+            )
+            return
+        self._manual_update_check = manual
+        if not self.update_manager.check_for_updates(manual=manual) and manual:
+            QMessageBox.information(
+                self,
+                self.t("update.title"),
+                self.t("update.already_running"),
+            )
+
+    def _refresh_update_controls(self):
+        if self.settings_page is not None:
+            pages.update_update_controls(self)
+
+    def _on_update_state_changed(self, _state: str):
+        self._refresh_update_controls()
+
+    def _on_update_progress(self, _received: int, _total: int):
+        self._refresh_update_controls()
+
+    def update_status_text(self) -> str:
+        manager = self.update_manager
+        if manager.state == "checking":
+            return self.t("update.status_checking")
+        if manager.state == "downloading":
+            total = max(manager.total_bytes, 1)
+            percent = min(100, int(manager.received_bytes * 100 / total))
+            return self.t("update.status_downloading", percent=percent)
+        if manager.state == "verifying":
+            return self.t("update.status_verifying")
+        if manager.state == "install_scheduled":
+            return self.t("update.status_install_scheduled")
+        if manager.state == "ready":
+            return self.t("update.status_ready", version=manager.latest_version)
+        if manager.state == "up_to_date":
+            return self.t("update.status_current", version=APP_VERSION)
+        if manager.state == "failed":
+            return self.t("update.status_failed")
+        return self.t("update.status_idle", version=APP_VERSION)
+
+    def _on_no_update(self, version: str):
+        if self._manual_update_check:
+            QMessageBox.information(
+                self,
+                self.t("update.title"),
+                self.t("update.no_update", version=version),
+            )
+        self._manual_update_check = False
+
+    def _on_update_error(self, message: str):
+        if self._manual_update_check:
+            QMessageBox.warning(
+                self,
+                self.t("update.error_title"),
+                self.t("update.error_message", error=message),
+            )
+        self._manual_update_check = False
+
+    def _on_update_ready(self, version: str, _installer_path: str):
+        repeat_prompt = self._manual_update_check
+        if (
+            version == self._prompted_update_version
+            and not repeat_prompt
+        ) or self._is_exiting:
+            return
+        self._prompted_update_version = version
+        self._manual_update_check = False
+        self.show_and_raise()
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setWindowTitle(self.t("update.ready_title"))
+        dialog.setText(self.t("update.ready_message", version=version))
+        install_button = dialog.addButton(
+            self.t("update.install_now"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        dialog.addButton(
+            self.t("update.install_later"),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        dialog.exec()
+        if dialog.clickedButton() is not install_button:
+            return
+        if not self.update_manager.schedule_install():
+            QMessageBox.warning(
+                self,
+                self.t("update.error_title"),
+                self.t("update.launch_failed"),
+            )
+            return
+        self.exit_app()
 
     # -------------------- UI 构建 --------------------
     def setup_ui(self):
@@ -420,6 +544,7 @@ class MainWindow(QMainWindow):
         language_code = get_setting("language", LanguageManager.DEFAULT_LANGUAGE)
         self.language_manager.set_language(language_code)
         self.close_to_tray = bool(get_setting("close_to_tray", False))
+        self.auto_check_updates = bool(get_setting("auto_check_updates", True))
         self.set_context_menu_enabled(
             bool(get_setting("context_menu_enabled", context_menu.DEFAULT_ENABLED)),
             persist=False,
@@ -513,6 +638,8 @@ class MainWindow(QMainWindow):
             app.quit()
 
     def _cleanup_before_exit(self):
+        if hasattr(self, "update_manager"):
+            self.update_manager.shutdown()
         if hasattr(self, "refresh_timer"):
             self.refresh_timer.stop()
         if hasattr(self, "watcher"):

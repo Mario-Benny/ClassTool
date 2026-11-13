@@ -27,6 +27,7 @@ release/*
 !release/*.exe
 !release/*.zip
 !release/*.sha256
+!release/update.json
 
 # Runtime data
 src/ClassTool/data/*

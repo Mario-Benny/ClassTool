@@ -17,7 +17,7 @@ def app_root() -> Path:
 
 
 def resource_root() -> Path:
-    """返回内置资源根目录，兼容源码运行和单文件 EXE。"""
+    """返回内置资源根目录，兼容源码运行和 PyInstaller 打包。"""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
     return app_root()
@@ -29,7 +29,7 @@ def language_dir() -> Path:
 
 
 def version_info_path() -> Path:
-    """返回版本信息文件路径，随语言资源一起打进 EXE。"""
+    """返回版本信息文件路径，随语言资源一起进入内部运行目录。"""
     return resource_root() / "version.json"
 
 

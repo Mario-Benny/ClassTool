@@ -5,7 +5,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QScrollArea, QGridLayout, QFrame, QComboBox, QPushButton, QCheckBox
+    QScrollArea, QGridLayout, QFrame, QComboBox, QPushButton, QCheckBox,
+    QProgressBar
 )
 
 from toolkit.core.app_info import APP_VERSION, CHANGELOG_URL, GITHUB_URL, build_date
@@ -132,6 +133,33 @@ def create_settings_page(main_window):
 
     language_combo.currentIndexChanged.connect(on_language_change)
 
+    update_label = QLabel()
+    update_label.setStyleSheet("font-size: 11pt; margin-top: 8px;")
+    layout.addWidget(update_label)
+
+    update_row = QHBoxLayout()
+    update_row.setSpacing(10)
+    auto_update_check = QCheckBox()
+    auto_update_check.setChecked(main_window.auto_check_updates)
+    auto_update_check.toggled.connect(main_window.set_auto_check_updates)
+    check_update_btn = QPushButton()
+    check_update_btn.setMinimumHeight(34)
+    check_update_btn.clicked.connect(
+        lambda: main_window.check_for_updates(manual=True)
+    )
+    update_row.addWidget(auto_update_check)
+    update_row.addWidget(check_update_btn)
+    update_row.addStretch()
+    layout.addLayout(update_row)
+
+    update_status = QLabel()
+    update_progress = QProgressBar()
+    update_progress.setRange(0, 100)
+    update_progress.setTextVisible(False)
+    update_progress.setFixedHeight(6)
+    layout.addWidget(update_status)
+    layout.addWidget(update_progress)
+
     data_label = QLabel()
     data_label.setStyleSheet("font-size: 11pt; margin-top: 8px;")
     layout.addWidget(data_label)
@@ -169,6 +197,11 @@ def create_settings_page(main_window):
     page.theme_control = theme_control
     page.language_label = language_label
     page.language_combo = language_combo
+    page.update_label = update_label
+    page.auto_update_check = auto_update_check
+    page.check_update_btn = check_update_btn
+    page.update_status = update_status
+    page.update_progress = update_progress
     page.data_label = data_label
     page.open_data_btn = open_data_btn
     page.export_btn = export_btn
@@ -242,6 +275,13 @@ def retranslate_settings_page(main_window):
         page.language_combo.findData(main_window.language_manager.current_language)
     )
     page.language_combo.blockSignals(False)
+    page.update_label.setText(translate("settings.update"))
+    page.auto_update_check.blockSignals(True)
+    page.auto_update_check.setText(translate("settings.auto_check_updates"))
+    page.auto_update_check.setChecked(main_window.auto_check_updates)
+    page.auto_update_check.blockSignals(False)
+    page.check_update_btn.setText(translate("settings.check_updates"))
+    update_update_controls(main_window)
     page.data_label.setText(translate("settings.data"))
     page.open_data_btn.setText(translate("settings.open_data"))
     page.export_btn.setText(translate("settings.export_settings"))
@@ -256,6 +296,19 @@ def retranslate_settings_page(main_window):
     page.context_menu_check.setText(translate("settings.context_menu"))
     page.context_menu_check.setChecked(main_window.context_menu_enabled)
     page.context_menu_check.blockSignals(False)
+
+
+def update_update_controls(main_window):
+    """只刷新更新状态和进度，避免下载时重建整张设置页。"""
+    if not getattr(main_window, "settings_page", None):
+        return
+
+    page = main_window.settings_page
+    page.update_status.setText(main_window.update_status_text())
+    total = max(main_window.update_manager.total_bytes, 1)
+    progress = min(100, int(main_window.update_manager.received_bytes * 100 / total))
+    page.update_progress.setValue(progress)
+    page.update_progress.setVisible(main_window.update_manager.state == "downloading")
 
 
 def apply_page_theme(main_window):
@@ -293,6 +346,17 @@ def apply_page_theme(main_window):
             selection-background-color: {selected_background};
             selection-color: white;
             outline: 0;
+        }}
+    """)
+    main_window.settings_page.update_progress.setStyleSheet(f"""
+        QProgressBar {{
+            background: {colors['border_main']};
+            border: none;
+            border-radius: 3px;
+        }}
+        QProgressBar::chunk {{
+            background: {selected_background};
+            border-radius: 3px;
         }}
     """)
     button_style = f"""

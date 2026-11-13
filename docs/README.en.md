@@ -1,76 +1,229 @@
-# ClassTool
+# ClassTool Technical Documentation
 
-> A lightweight Windows desktop toolkit for classroom use.
+This document is intended for developers who want to run ClassTool from source, create plugins, diagnose failures, or prepare a release. General users should start with the [English README](../README.en.md).
 
-ClassTool brings common classroom utilities together in a clean desktop application. Teachers can choose a tool directly from the Home page without searching through menus or completing complex setup. The host supports Simplified Chinese, English, light and dark themes, and external plugins.
+[中文技术文档](README.zh-CN.md)
 
-[中文说明](README.md) | [Download](release/) | [English Technical Documentation](docs/README.en.md) | [Security Policy](SECURITY.md)
+## Contents
 
-## Included Tools
+1. [Architecture](#1-architecture)
+2. [Repository Layout](#2-repository-layout)
+3. [Running from Source](#3-running-from-source)
+4. [Resources and Runtime Data](#4-resources-and-runtime-data)
+5. [Plugin Interface](#5-plugin-interface)
+6. [Plugin Dependencies and Security](#6-plugin-dependencies-and-security)
+7. [Packaging and Releases](#7-packaging-and-releases)
+8. [Installer and Portable Build](#8-installer-and-portable-build)
+9. [In-App Updates](#9-in-app-updates)
+10. [Logs and Troubleshooting](#10-logs-and-troubleshooting)
+11. [Testing and Contributions](#11-testing-and-contributions)
 
-| Tool | Purpose |
+## 1. Architecture
+
+ClassTool is a PySide6 desktop application for 64-bit Windows.
+
+- The application is packaged with PyInstaller in `onedir` mode.
+- Python, PySide6, Qt, and application modules are stored under `_internal/`.
+- Language resources and `version.json` are bundled with the application.
+- Plugins remain as inspectable Python files in the external `tools/` directory.
+- Settings, logs, plugin metadata, and plugin data remain in the external `data/` directory.
+
+The host owns the window, navigation, themes, languages, single-instance communication, logging, plugin discovery, update checks, and plugin lifecycle. Classroom features are implemented as plugins.
+
+## 2. Repository Layout
+
+```text
+ClassTool/
+|-- assets/
+|   `-- logo.ico
+|-- docs/
+|   |-- README.zh-CN.md
+|   `-- README.en.md
+|-- release/                     # Public release assets only
+|-- scripts/                     # PyInstaller, NSIS, and maintenance scripts
+|-- src/ClassTool/
+|   |-- language/                # Bundled JSON translations
+|   |-- toolkit/                 # Host core and UI modules
+|   |-- tools/                   # Official plugins and source template
+|   |-- main.py
+|   `-- version.json             # Single version source
+|-- tests/
+|-- requirements.txt
+`-- requirements-dev.txt
+```
+
+Real runtime data is not stored in the source tree. ClassTool creates `data/` when it first runs.
+
+## 3. Running from Source
+
+Use 64-bit Windows 10 or Windows 11 and an isolated virtual environment. Python 3.10 or newer is recommended.
+
+```bat
+git clone https://github.com/Mario-Benny/ClassTool.git
+cd ClassTool
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+cd src\ClassTool
+python main.py
+```
+
+ClassTool uses a Windows single-instance mutex. A second launch activates the existing window. The `--tool <plugin-id>` argument asks the existing instance to open a specific plugin.
+
+## 4. Resources and Runtime Data
+
+### Languages
+
+`src/ClassTool/language/` contains `zh_CN.json` and `en_US.json`. Both files must contain the same keys. Missing entries fall back to Simplified Chinese and then to the key itself.
+
+### Version
+
+`src/ClassTool/version.json` is the only application version source. Do not maintain a second hard-coded version in Python or a build script.
+
+### Runtime data
+
+| Path | Purpose |
 | --- | --- |
-| Countdown Timer | Runs classroom countdowns up to 99 hours, 99 minutes, and 99 seconds. |
-| Random Picker | Randomly selects a student or item from a list. |
-| Screen Doodle | Freezes the screen for temporary annotations and explanations. |
-| Calculator | Handles common classroom calculations. |
-| Document Camera | Uses a camera to present printed materials or physical objects. |
-| Voting | Opens an independent voting window and counts votes in real time. |
+| `data/settings.json` | Theme, language, window, update, and close behavior. |
+| `data/tools_data.json` | Data stored through the plugin configuration API. |
+| `data/plugin_cache.json` | Static plugin metadata cache. |
+| `data/logs/` | Runtime and unhandled-exception logs. |
 
-## Key Features
+Never commit real classroom data, personal settings, tokens, or logs.
 
-- **Tools on the Home page**: available tools are visible as soon as the application opens.
-- **No separate Python installation**: both installer and portable packages include the required runtime.
-- **Plugin-based expansion**: compatible `.py` plugins can be added to the external `tools/` directory.
-- **Chinese and English interface**: the display language can be changed from Settings.
-- **Light and dark themes**: the interface can be adjusted for different classroom environments.
-- **External runtime data**: settings, logs, and plugin data remain under `data/` for easier backup and troubleshooting.
+## 5. Plugin Interface
 
-## Choose a Download
+Plugins are `.py` files placed in the external `tools/` directory. ClassTool reads a literal `TOOL_INFO` dictionary through the AST and delays module import until the user opens the tool.
 
-Current packages are available from the repository's [release](release/) directory. Versioned historical packages can also be published through [GitHub Releases](https://github.com/Mario-Benny/ClassTool/releases).
+```python
+TOOL_INFO = {
+    "name": "Example Tool",
+    "color": "#2D89EF",
+    "icon": "\uECAA",
+    "description": "A minimal ClassTool plugin.",
+    "requirements": ["PySide6.QtWidgets"],
+    "cache": True,
+}
+```
 
-| Package | Recommended for | How to use it |
-| --- | --- | --- |
-| Installer `ClassTool-v*-Setup.exe` | Normal use; recommended for most users | Run the installer, select the required plugins, and finish installation. |
-| Portable `ClassTool-v*-win-x64-portable.zip` | USB drives, temporary computers, or use without installation | Extract the complete ZIP and run `ClassTool.exe` inside the extracted directory. |
+A plugin must provide at least one entry point:
 
-The portable build uses a multi-file layout. Do not copy `ClassTool.exe` by itself or remove `_internal/`; the application cannot start without its bundled dependencies.
+- `create_widget()` returns a `QWidget`.
+- `get_widget()` is a compatible widget entry point.
+- `run()` executes a tool that does not need an embedded page.
 
-## System Requirements
+Plugins that own threads, timers, cameras, devices, or independent windows should implement `cleanup()`. ClassTool calls it during a full application exit.
 
-- 64-bit Windows 10 or Windows 11.
-- Administrator privileges for the installer.
-- A working camera and the appropriate Windows permissions for Document Camera.
-- School computer security policies may restrict Screen Doodle, context-menu registration, or other system integrations.
+The complete template is [example_tool.py.txt](../src/ClassTool/tools/example_tool.py.txt). Copy and rename it to a unique `.py` file; the `.py.txt` suffix prevents the template from loading as an installed plugin.
 
-## Quick Start
+Plugins can persist data through `get_tool_config()` and `set_tool_config()` from `toolkit.core.tools_config`.
 
-### Installer
+## 6. Plugin Dependencies and Security
 
-1. Download and run `ClassTool-v*-Setup.exe`.
-2. Choose the installation directory and classroom plugins to install.
-3. Start ClassTool from the desktop or Start menu shortcut.
+`TOOL_INFO["requirements"]` may contain import names or common package names with simple version constraints. ClassTool checks availability but never installs dependencies automatically.
 
-The installer prefers `D:\ClassTool`. If drive D is unavailable, it falls back to the Windows `Program Files\ClassTool` directory. It creates desktop and Start menu shortcuts, an uninstall entry, and desktop-background context-menu items for installed plugins.
+Packaged ClassTool builds contain an embedded Python runtime. If a third-party plugin requires another library, that dependency must already exist under `_internal/`. A plugin file alone cannot add binary dependencies to a computer without Python.
 
-### Portable Package
+Plugins are not sandboxed and run with permissions similar to the host. Install only trusted plugins and document any network, camera, microphone, clipboard, or file-system access. See the [Security Policy](SECURITY.md).
 
-1. Extract `ClassTool-v*-win-x64-portable.zip` completely.
-2. Keep `ClassTool.exe`, `_internal/`, `tools/`, and `data/` in their original relative locations.
-3. Double-click `ClassTool.exe`.
+## 7. Packaging and Releases
 
-The portable package includes three maintenance scripts for rebuilding shortcuts, registering the desktop context menu, and removing the context menu. Administrator privileges may be required when registering system integrations.
+Official builds use PyInstaller `onedir`, not `onefile`, to avoid extracting Python and Qt on every startup.
 
-## Plugin Security
+Release requirements:
 
-ClassTool plugins are not sandboxed. A plugin has permissions comparable to the host application and may access files, networks, cameras, microphones, or the clipboard. Install plugins only from trusted sources and inspect their source code and dependencies before running them. See [SECURITY.md](SECURITY.md) for details.
+1. Read the version from `version.json`.
+2. Build with `--onedir --windowed`.
+3. Bundle `language/` and `version.json`.
+4. Include the required PySide6 network and multimedia modules.
+5. Copy official plugins into external `tools/`, excluding `example_tool.py.txt`.
+6. Create an empty external `data/` directory.
+7. Test the result outside the development terminal.
 
-## Learn More
+Run the public build entry point with:
 
-- [English Technical Documentation](docs/README.en.md)
-- [中文说明](README.md)
-- [中文详细技术文档](docs/README.zh-CN.md)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [MIT License](LICENSE)
+```bat
+scripts\build_release.cmd
+```
+
+The script discovers Python and NSIS, builds the onedir application and NSIS installer, and writes the installer, SHA-256 checksum, and `update.json` to `release/`.
+
+Do not commit PyInstaller `build/`, `dist/`, `.spec`, logs, or temporary directories. Historical binaries should be published as GitHub Release assets.
+
+## 8. Installer and Portable Build
+
+The NSIS installer:
+
+- Requires 64-bit Windows and administrator privileges.
+- Prefers `D:\ClassTool`, falling back to `Program Files\ClassTool` if drive D is unavailable.
+- Allows users to select official plugins.
+- Creates desktop, Start menu, uninstall, and context-menu entries.
+- Can start ClassTool after installation.
+- Can move itself to the Recycle Bin when requested.
+- Preserves a clear boundary around user data and third-party plugins.
+
+A portable package must keep this layout intact:
+
+```text
+ClassTool-v<version>-win-x64-portable/
+|-- ClassTool.exe
+|-- _internal/
+|-- tools/
+|-- data/
+|-- 重建ClassTool快捷方式.cmd
+|-- 注册桌面右键菜单.cmd
+`-- 清除桌面右键菜单.cmd
+```
+
+Do not move `ClassTool.exe` without `_internal/`.
+
+## 9. In-App Updates
+
+The update engine is implemented by `toolkit/core/update_manager.py` and `update_launcher.py`. It uses PySide6 `QtNetwork` for non-blocking requests and reads the stable manifest from:
+
+```text
+https://github.com/Mario-Benny/ClassTool/releases/latest/download/update.json
+```
+
+Each stable GitHub Release must include the versioned installer and an asset named exactly `update.json`. The manifest declares the version, minimum updater version, installer URL, size, and SHA-256 digest.
+
+The update flow:
+
+1. Performs a delayed startup check or a user-requested manual check.
+2. Compares strict three-part numeric versions.
+3. Downloads to `%LOCALAPPDATA%\ClassTool\updates`.
+4. Uses `.part` and state files for Range resume and retry backoff.
+5. Validates free space, trusted HTTPS hosts, response ranges, size, and SHA-256.
+6. Prompts the user after a verified installer is ready.
+7. Re-verifies the path and SHA-256 before waiting for ClassTool to exit and launching the installer with elevation.
+
+Automatic-check failures do not block normal application use. Manual failures are shown to the user and written to the log. SHA-256 protects consistency with the manifest but is not a replacement for a signed release manifest.
+
+## 10. Logs and Troubleshooting
+
+Start with `data/logs/` when diagnosing startup, plugin, device, or update failures.
+
+| Symptom | Check |
+| --- | --- |
+| `DLL load failed while importing QtCore` | Confirm `_internal/` is complete and rebuild with a clean `PATH`. |
+| Plugin is missing | Confirm the `.py` file, literal `TOOL_INFO`, and required dependencies. |
+| Process remains after closing | Exit from the tray and confirm plugin `cleanup()` releases resources. |
+| Camera is unavailable | Check Windows privacy permissions and multimedia dependencies. |
+| Context menu is missing | Run the registration script as administrator or clear and re-register it. |
+| Update check returns HTTP 404 | Upload an asset named exactly `update.json` to the latest GitHub Release. |
+| Download verification fails | Regenerate the manifest from the same installer build. |
+
+## 11. Testing and Contributions
+
+Before submitting a change:
+
+1. Parse or compile-check every Python file.
+2. Confirm Chinese and English translation keys match.
+3. Run `python -m unittest discover -s tests -v`.
+4. Launch from source and open each affected plugin.
+5. Confirm a full exit leaves no ClassTool process.
+6. Test packaging changes outside the development terminal.
+7. Check that no personal data, tokens, logs, or build caches are included.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements.
