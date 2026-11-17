@@ -34,7 +34,7 @@ ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开�
 | 类型 | 适合场景 | 使用方法 |
 | --- | --- | --- |
 | 安装版 `ClassTool-v*-Setup.exe` | 日常使用，推荐普通用户选择 | 运行安装器，选择需要的插件并完成安装。 |
-| 绿色版 `ClassTool-v*-Grean.zip` | U 盘、临时电脑或免安装使用 | 完整解压 ZIP，然后运行目录中的 `ClassTool.exe`。 |
+| 绿色版 `ClassTool-v*-win-x64-portable.zip` | U 盘、临时电脑或免安装使用 | 完整解压 ZIP，然后运行目录中的 `ClassTool.exe`。 |
 
 绿色版采用多文件结构。请勿只复制 `ClassTool.exe`，也不要删除 `_internal/`，否则程序无法启动。
 
@@ -59,7 +59,7 @@ ClassTool 将常用课堂工具集中在一个简洁的桌面程序中。打开�
 
 ### 绿色版
 
-1. 完整解压 `ClassTool-v*-Grean.zip`。
+1. 完整解压 `ClassTool-v*-win-x64-portable.zip`。
 2. 保持 `ClassTool.exe`、`_internal/`、`tools/` 和 `data/` 的相对位置不变。
 3. 双击 `ClassTool.exe` 启动程序。
 
