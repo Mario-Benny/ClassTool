@@ -4,6 +4,15 @@
 
 - No unreleased user-facing changes yet.
 
+## 1.2.3 - 2026-11-18
+
+- Replaced the in-process update implementation with the independently packaged PyUpdateCore 1.0.1 engine.
+- Added a versioned JSON Lines IPC adapter while preserving the existing ClassTool update interface and UI states.
+- Added safe updater configuration generation under the external `data/updater/` directory.
+- Added handling for out-of-order task completion messages from very fast updater workers.
+- Bundled the updater executable in multi-file, portable, and installer distributions.
+- Updated updater integration tests and the packaging workflow.
+
 ## 1.2.2 - 2026-11-13
 
 - Added a production-ready in-app update engine for stable GitHub Releases.
